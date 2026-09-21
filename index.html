@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fruit &amp; Shoot Borer Spread Simulator - Eggplant Farm</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Quicksand', 'Segoe UI', sans-serif; background: #1a3a2e; color: #e8e1d9; display: flex; flex-direction: column; align-items: center; padding: 12px; }
+.container { max-width: 1020px; width: 100%; }
+h1 { text-align: center; margin-bottom: 4px; font-size: 1.5rem; color: #d4a533; font-weight: 700; }
+h2 { text-align: center; font-size: 0.9rem; color: #97b59a; margin-bottom: 10px; font-weight: 400; }
+
+.stats-bar {
+  display: flex; justify-content: center; gap: 16px; margin-bottom: 10px; padding: 6px 14px;
+  background: #23333a; border-radius: 8px; border: 1px solid #3d5a40; flex-wrap: wrap;
+}
+.stat-item { font-size: 0.85rem; display: flex; align-items: center; gap: 5px; }
+.stat-value { font-weight: 700; min-width: 30px; text-align: center; }
+.stat-label { color: #9fb59a; font-size: 0.72rem; }
+.stat-healthy { color: #66bb6a; }
+.stat-infested { color: #ef5350; animation: pulse 1.2s infinite; }
+.stat-worms { color: #ffb74d; }
+.stat-day { color: #ffca28; }
+.stat-spray { color: #4fc3f7; }
+.stat-lure { color: #ce93d8; }
+.stat-harvest { color: #aed581; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.main-content { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+
+#grid {
+  display: grid;
+  gap: 1px;
+  background: #2e3520;
+  border: 3px solid #5d7a52;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+
+.cell { width: 44px; height: 44px; border-radius: 3px; position: relative; }
+
+/* Path tiles - old cartoon look */
+.cell.path {
+  background: #8a743a;
+  background-image:
+    radial-gradient(circle at 30% 30%, #9c8250 2px, transparent 3px),
+    radial-gradient(circle at 70% 65%, #7a6832 2px, transparent 3px),
+    radial-gradient(circle at 50% 90%, #6b5a2e 2px, transparent 3px),
+    radial-gradient(circle at 80% 20%, #9c8250 2px, transparent 3px),
+    radial-gradient(circle at 15% 75%, #6b5a2e 2px, transparent 3px),
+    linear-gradient(135deg, #8a743a, #7a6832);
+  cursor: default;
+}
+
+/* Plant tiles */
+.cell.plant { cursor: pointer; background: #3e5f25; transition: transform 0.08s; }
+.cell.plant:hover { transform: scale(1.1); z-index: 2; }
+.cell.plant .egg {
+  position: absolute; inset: 2px;
+  background-image: url('eggplant.jpg');
+  background-size: cover; background-position: center;
+  image-rendering: pixelated; border-radius: 2px; pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.cell.plant.infested .egg { filter: saturate(0.4) brightness(0.75) contrast(1.1); }
+.cell.plant.has-eggs .egg::after {
+  content: ''; position: absolute; left: 4px; top: 3px; width: 18px; height: 10px;
+  background-image:
+    radial-gradient(circle 1.6px at 3px 3px, #fff9 3px, transparent 3.5px),
+    radial-gradient(circle 1.6px at 8px 1px, #fff9 3px, transparent 3.5px),
+    radial-gradient(circle 1.6px at 13px 4px, #fff9 3px, transparent 3.5px),
+    radial-gradient(circle 1.6px at 6px 6px, #fff9 3px, transparent 3.5px),
+    radial-gradient(circle 1.6px at 15px 2px, #fff9 3px, transparent 3.5px);
+}
+.cell.plant .worm, .cell.plant .moth {
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  font-size: 20px; pointer-events: none; letter-spacing: -2px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+.cell.plant .worm { animation: wiggle 0.6s infinite; }
+.cell.plant .moth { animation: flutter 0.9s infinite; align-items: flex-start; justify-content: flex-end; font-size: 16px; }
+@keyframes wiggle { 0%,100% { transform: translateX(-1px) rotate(-6deg); } 50% { transform: translateX(1px) rotate(6deg); } }
+@keyframes flutter { 0%,100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-3px) rotate(8deg); } }
+.cell.plant .badge {
+  position: absolute; top: 1px; left: 1px; min-width: 14px; height: 14px;
+  background: rgba(20,30,24,0.85); color: #ffb74d; font-size: 0.62rem; font-weight: 700;
+  border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  padding: 0 3px; pointer-events: none; border: 1px solid #5d7a52;
+}
+.cell.plant .sprayglow {
+  position: absolute; inset: 1px; border-radius: 3px; display: none; pointer-events: none;
+  background:
+    radial-gradient(circle 1.5px at 8px 30px, rgba(79,195,247,0.9) 2px, transparent 3px),
+    radial-gradient(circle 1.5px at 22px 12px, rgba(79,195,247,0.9) 2px, transparent 3px),
+    radial-gradient(circle 1.5px at 34px 36px, rgba(79,195,247,0.9) 2px, transparent 3px),
+    radial-gradient(circle 1.5px at 14px 40px, rgba(79,195,247,0.9) 2px, transparent 3px),
+    radial-gradient(circle 1.5px at 30px 24px, rgba(79,195,247,0.9) 2px, transparent 3px),
+    rgba(79,195,247,0.18);
+  box-shadow: inset 0 0 0 2px rgba(79,195,247,0.55);
+}
+.cell.plant.sprayed .sprayglow { display: block; }
+.cell.plant .lure {
+  position: absolute; top: 1px; right: 1px; font-size: 15px; display: none; pointer-events: none;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+}
+.cell.plant.lured .lure { display: block; animation: lurepulse 1.4s infinite; }
+@keyframes lurepulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+.cell.plant .farmer {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  font-size: 20px; pointer-events: none; z-index: 4; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.cell.plant.farming .farmer { display: flex; animation: farmshake 0.9s infinite; }
+@keyframes farmshake { 0%,100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
+.cell.plant.harvesting { box-shadow: inset 0 0 0 2px #ffd54f; }
+.cell.plant.harvesting .farmer { display: flex; font-size: 18px; animation: harvestpick 0.6s infinite; }
+@keyframes harvestpick { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-3px) scale(1.14); } }
+
+.panel { display: flex; flex-direction: column; gap: 12px; min-width: 252px; background: #23333a; padding: 14px; border-radius: 8px; border: 1px solid #3d5a40; font-size: 0.85rem; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.82rem; transition: all 0.15s; }
+button:active { transform: scale(0.95); }
+.btn-day { background: linear-gradient(135deg, #42a5f5, #1565c0); color: #fff; }
+.btn-run { background: linear-gradient(135deg, #43a047, #2e7d32); color: #fff; }
+.btn-run.active { outline: 3px solid #a5d6a7; }
+.btn-spray { background: linear-gradient(135deg, #03a9f4, #01579b); color: #fff; }
+.btn-lure { background: linear-gradient(135deg, #ba68c8, #6a1b9a); color: #fff; }
+.btn-combine { background: linear-gradient(135deg, #7e57c2, #0277bd); color: #fff; }
+.btn-stop { background: linear-gradient(135deg, #e53935, #c62828); color: #fff; }
+.btn-reset { background: linear-gradient(135deg, #78909c, #455a5a); color: #fff; }
+.btn-seed { background: linear-gradient(135deg, #ff9800, #e65100); color: #fff; }
+.btn-report { background: linear-gradient(135deg, #ab47bc, #6a1b9a); color: #fff; }
+.btn-run.needs-seed, .btn-lure.needs-seed, .btn-spray.needs-seed, .btn-combine.needs-seed {
+  filter: grayscale(0.75) brightness(0.65); cursor: not-allowed;
+}
+
+.mode-title { font-size: 0.78rem; color: #9fb59a; margin-bottom: 5px; }
+.mode-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
+.mode-btn { padding: 5px 10px; font-size: 0.72rem; border-radius: 4px; background: #33444c; color: #b9ccc4; border: 1px solid #4a5a55; }
+.mode-btn.active { background: #d4a533; color: #1a2a1e; border-color: #d4a533; }
+
+.slider-row { display: flex; align-items: center; gap: 8px; font-size: 0.76rem; }
+.slider-row label { min-width: 92px; color: #b0c0b8; }
+.slider-row input[type="range"] { flex: 1; }
+.slider-row .val { color: #ffca28; font-weight: 700; min-width: 34px; text-align: center; }
+.btn-sm { width: 22px; height: 22px; padding: 0; border-radius: 4px; background: #3f5058; color: #ccc; border: 1px solid #5a6a62; font-size: 0.9rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+
+.weather-line, .msg-line { font-size: 0.78rem; color: #b9d4c2; background: #1b2a30; padding: 6px 10px; border-radius: 6px; border: 1px solid #3d5a40; }
+.weather-line b { color: #ffca28; }
+.msg-line { color: #80cbc4; min-height: 17px; }
+
+hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
+
+.info-box { font-size: 0.72rem; color: #9fb59a; line-height: 1.5; }
+.info-box strong { color: #ffca28; }
+
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 12px; font-size: 0.76rem; padding: 6px 10px; background: #23333a; border-radius: 6px; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+
+.bar-wrap { margin-top: 4px; }
+.bar-label { font-size: 0.72rem; color: #9fb59a; margin-bottom: 4px; display:flex; justify-content:space-between; }
+.bar { height: 16px; background: #16222a; border-radius: 6px; overflow: hidden; display: flex; }
+.bar .seg-healthy { background: #66bb6a; }
+.bar .seg-infested { background: #ef5350; }
+
+/* ---- report modal ---- */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(8,20,14,0.72); z-index: 50; align-items: flex-start; justify-content: center; padding: 30px 14px; overflow: auto; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #1c2d26; border: 1px solid #4a6a50; border-radius: 12px; max-width: 800px; width: 100%; padding: 20px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+.modal-box h3 { color: #d4a533; margin-bottom: 4px; }
+.modal-box h4 { color: #97b59a; margin: 16px 0 8px; border-bottom: 1px solid #3d5a40; padding-bottom: 4px; }
+.modal-close { position: absolute; top: 12px; right: 12px; background: #33444c; color: #ddd; border: 1px solid #5a6a62; }
+.r-summary { display: flex; grid-gap: 16px; gap: 16px; flex-wrap: wrap; font-size: 0.8rem; margin: 10px 0; }
+.r-summary div b { color: #ffca28; }
+.r-table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.r-table th { background: #27413a; color: #b9d4c2; padding: 4px 6px; text-align: left; }
+.r-table td { padding: 3px 6px; border-bottom: 1px solid #2e4438; }
+.r-table tr.hot td { background: rgba(239,83,80,0.18); }
+.rec-list { margin: 6px 0; padding-left: 18px; }
+.rec-list li { margin: 5px 0; font-size: 0.78rem; line-height: 1.45; }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 0.66rem; font-weight: 700; }
+.tag.ok { background: #2e7d32; color: #c8e6c9; }
+.tag.warn { background: #e65100; color: #ffe0b2; }
+.tag.crit { background: #c62828; color: #ffcdd2; }
+.rate-bars { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 8px; }
+.rate-bars span { background: #ef5350; width: 8px; border-radius: 2px 2px 0 0; opacity: 0.85; }
+.expl { font-size: 0.72rem; color: #9fb59a; margin-top: 4px; }
+.md-body { font-size: 0.8rem; line-height: 1.5; color: #cfe3d4; }
+.md-body h2 { color: #d4a533; margin: 18px 0 8px; }
+.md-body h3 { color: #97b59a; margin: 16px 0 6px; border-bottom: 1px solid #3d5a40; padding-bottom: 4px; }
+.md-body h4 { color: #97b59a; margin: 12px 0 6px; }
+.md-body p { margin: 6px 0; }
+.md-body a { color: #7fd1a0; word-break: break-all; }
+.md-body code { background: #14241d; padding: 1px 4px; border-radius: 3px; font-size: 0.75rem; }
+.md-body blockquote { border-left: 3px solid #4a6a50; margin: 8px 0; padding: 5px 12px; color: #a9c4ae; background: rgba(255,255,255,0.03); }
+.md-body ul, .md-body ol { margin: 6px 0 6px 20px; }
+.md-body li { margin: 3px 0; }
+.md-body hr { border: none; border-top: 1px solid #3d5a40; margin: 14px 0; }
+.md-body table { margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Fruit &amp; Shoot Borer Spread Simulator</h1>
+  <h2>Eggplant Farm &middot; Research-based daily model (L. orbonalis)</h2>
+
+  <div class="stats-bar">
+    <div class="stat-item"><span class="stat-value stat-healthy" id="healthyCount">0</span><span class="stat-label">Healthy Plants</span></div>
+    <div class="stat-item"><span class="stat-value stat-infested" id="infestedCount">0</span><span class="stat-label">Infested Plants</span></div>
+    <div class="stat-item"><span class="stat-value stat-worms" id="wormCount">0</span><span class="stat-label">Total Borers</span></div>
+    <div class="stat-item"><span class="stat-value stat-spray" id="sprayCount">0</span><span class="stat-label">Sprayed</span></div>
+    <div class="stat-item"><span class="stat-value stat-lure" id="lureCount">0</span><span class="stat-label">Lures</span></div>
+    <div class="stat-item"><span class="stat-value stat-harvest" id="harvestCount">0</span><span class="stat-label">Fruit 🍆</span></div>
+    <div class="stat-item"><span class="stat-value" id="totalCount">0</span><span class="stat-label">Plants</span></div>
+    <div class="stat-item"><span class="stat-value stat-day" id="dayCount">Day 1</span></div>
+  </div>
+
+  <div class="main-content">
+    <div id="grid"></div>
+
+    <div class="panel">
+      <div class="btn-row">
+        <button class="btn-day" id="dayBtn">+1 Day</button>
+        <button class="btn-run" id="runBtn" title="No control - runs until borers are under control">Run Daily</button>
+        <button class="btn-lure" id="runLureBtn" title="Runs with pheromone lures until harvest">Run + Pheromone</button>
+        <button class="btn-spray" id="runSprayBtn" title="Runs with auto pesticide application until harvest">Run + Spray</button>
+        <button class="btn-combine" id="runCombBtn" title="Runs with pheromone lures AND threshold spraying together (IPM) until harvest">Run + Lure &amp; Spray</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn-seed" id="seedBtn">Seed Farm</button>
+        <button class="btn-reset" id="resetBtn">Reset</button>
+        <button class="btn-report" id="reportBtn">📊 Report</button>
+        <button class="btn-report" id="sourcesBtn" title="Research sources and model notes">📚 Sources</button>
+        <button class="btn-seed" id="loadFarmBtn" title="Load a farm layout CSV — cells with 'plant' become eggplant, anything else is a path">Load Farm (.csv)</button>
+        <input type="file" id="farmFile" accept=".csv,text/csv" style="display:none">
+      </div>
+
+      <div class="weather-line" id="weatherLine">Weather: --</div>
+      <div class="msg-line" id="msgLine"></div>
+
+      <div class="mode-title">Click Tool (click on the farm):</div>
+      <div class="mode-buttons">
+        <button class="mode-btn active" data-mode="infest">Add Borer 🐛</button>
+        <button class="mode-btn" data-mode="heal">Remove</button>
+        <button class="mode-btn" data-mode="spray">Farmer Spray 💧</button>
+        <button class="mode-btn" data-mode="lure">Place Lure 🪤</button>
+      </div>
+
+      <hr>
+
+      <div class="slider-row">
+        <label>Sim Speed ×</label>
+        <button class="btn-sm" data-target="speedSlider" data-dir="-1" data-step="25">−</button>
+        <input type="range" id="speedSlider" min="25" max="300" step="25" value="100">
+        <button class="btn-sm" data-target="speedSlider" data-dir="1" data-step="25">+</button>
+        <span class="val" id="speedVal">&times;1.00</span>
+      </div>
+
+      <div class="slider-row">
+        <label>Seed Borers</label>
+        <button class="btn-sm" data-target="seedSlider" data-dir="-1" data-step="1">−</button>
+        <input type="range" id="seedSlider" min="1" max="10" value="4">
+        <button class="btn-sm" data-target="seedSlider" data-dir="1" data-step="1">+</button>
+        <span class="val" id="seedVal">4</span>
+      </div>
+
+      <hr>
+
+      <div class="bar-wrap">
+        <div class="bar-label"><span>Infestation Progress</span><span id="rateLabel">0%</span></div>
+        <div class="bar"><div class="seg-healthy" id="barHealthy"></div><div class="seg-infested" id="barInfested"></div></div>
+      </div>
+
+      <hr>
+
+      <div class="info-box">
+        <strong>4 run modes</strong> <em>(add borers first — press <b>Seed Farm</b> or use the Infest tool, or these buttons won't run)</em><strong>:</strong>
+        <br>▸ <strong>Run Daily</strong> — no control; keeps going until borers are <em>under control</em> (&le;2% for 3 days).
+        <br>▸ <strong>Run + Pheromone 🪤</strong> — auto-places sex-pheromone traps (catch male moths, disrupt mating), runs until <strong>harvest</strong>.
+        <br>▸ <strong>Run + Spray 💧</strong> — farmer auto-sprays the <strong>whole plot in one day</strong> when &ge;5% threshold, repeats every ~7 days, until <strong>harvest</strong>.
+        <br>▸ <strong>Run + Lure &amp; Spray 🪤💧</strong> — <strong>combined IPM</strong>: pheromone traps <em>and</em> whole-farm threshold sprays (every ~10 days, fewer sprays) <em>and</em> weekly hand-removal of damaged shoots/fruit, until <strong>harvest</strong>. The three together beat either alone.<br><br>
+        <strong>Harvest </strong>🍆 starts <strong>46&ndash;50 days after transplanting</strong>, picking every 3&ndash;4 days (~2&times;/week) over a ~120-day profitable season (PH DA + Bt-eggplant trials). <em>All run modes except Run Daily simulate until the season ends; manual <b>+1 Day</b> is capped at 120 days, then the report opens.</em><br><br>
+        <strong>Farm layout (.csv):</strong> the field comes from <b>farm.csv</b> &mdash; one comma-separated row per line; a cell containing <b>plant</b> is an eggplant, anything else (e.g. <b>farm path</b>) is a walkway. Edit <b>farm.csv</b> and refresh, or use <b>Load Farm (.csv)</b> to try your own field &mdash; the grid resizes to the file.<br><br>
+        <strong>Sim Speed ×:</strong> only changes how fast the days tick (a viewing pace) &mdash; it does <em>not</em> change pest biology or the outcome. Use it to watch a run faster or slower.<br><br>
+        <strong>Spray 💧:</strong> one spray day covers <strong>every plant on the plot</strong> (a farmer sprays the whole field in a day). Kills exposed eggs/larvae, ~5-day residue. Larvae are only vulnerable a few hours after hatching (evening sprays work best).<br><br>
+        <strong>Lure 🪤:</strong> water-trap with a <strong>4 mg pheromone lure ~1 m high</strong> attracts <em>male moths</em> (mass trapping) to suppress mating.<br><br>
+        <strong>Combined 🪤💧 (research):</strong> a 10-day spray interval + pheromone traps + hand removal gave <strong>95.96% shoot / 94.85% fruit reduction</strong> — the best IPM package tested (IJACR 2021, Bangladesh). Traps also act as early-warning monitors. Note: even the best programme <strong>suppresses</strong> borers, it does not wipe them out — larvae sheltered inside fruit/shoots survive sprays and moths reinfest from nearby fields.
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="legend-box" style="width:18px;height:18px;border-radius:3px;display:inline-block;background:#8a743a"></span> Farm Path</span>
+    <span class="legend-item"><span class="legend-box" style="width:22px;height:26px;display:inline-flex;background:#3e5f25;border-radius:3px;overflow:hidden"><img src="eggplant.jpg" style="width:100%;height:100%;object-fit:cover;"></span> Eggplant</span>
+    <span class="legend-item"><span style="font-size:16px">🐛</span> Larvae</span>
+    <span class="legend-item"><span style="font-size:16px">🦋</span> Moth</span>
+    <span class="legend-item"><span style="font-size:12px;color:#fff9">●●●</span> Eggs</span>
+    <span class="legend-item"><span style="font-size:14px">🧑‍🌾</span> Farmer (spray / harvest)</span>
+    <span class="legend-item"><span style="font-size:14px">🪤</span> Pheromone lure</span>
+    <span class="legend-item"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:rgba(79,195,247,0.35);box-shadow:inset 0 0 0 2px rgba(79,195,247,0.6)"></span> Sprayed</span>
+    <span class="legend-item"><span style="font-size:14px">🍆</span> Harvest</span>
+  </div>
+</div>
+
+<!-- Report modal -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal-box">
+    <button class="modal-close" id="reportClose">Close ✕</button>
+    <div id="reportBody"></div>
+  </div>
+</div>
+
+<!-- Research sources modal (renders Research-Sources.md) -->
+<div class="modal-overlay" id="sourcesModal">
+  <div class="modal-box">
+    <button class="modal-close" id="sourcesClose">Close ✕</button>
+    <div id="sourcesBody" class="md-body">Loading…</div>
+  </div>
+</div>
+
+<script>
+function makeFallbackFarm() {
+  const rows = [];
+  for (let r = 0; r < 22; r++) {
+    const row = [];
+    for (let c = 0; c < 11; c++) {
+      if (r === 21) row.push('farm path');
+      else row.push(c % 2 === 0 ? 'farm path' : 'plant');
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+const FALLBACK_ENV = { T: 28.5, H: 80, weather: 'Cloudy', rainy: false };
+const MAX_INFEST_PCT = 80;                       // "out of control" infestation level
+const MAX_BORERS = 2500;                         // hard safety cap (uncontrolled peak ~3000)
+const CONTROL_THRESHOLD = 2;                     // % to call it "under control"
+const CONTROL_DAYS_REQ = 3;
+const SPRAY_THRESHOLD = 5;                       // action threshold (%) -> spray
+const SPRAY_REPEAT = 7;                          // days between auto sprays
+
+const gridEl = document.getElementById('grid');
+const healthyEl = document.getElementById('healthyCount');
+const infestedEl = document.getElementById('infestedCount');
+const wormTotalEl = document.getElementById('wormCount');
+const sprayTotalEl = document.getElementById('sprayCount');
+const lureTotalEl = document.getElementById('lureCount');
+const harvestEl = document.getElementById('harvestCount');
+const totalEl = document.getElementById('totalCount');
+const dayEl = document.getElementById('dayCount');
+const weatherLine = document.getElementById('weatherLine');
+const msgLine = document.getElementById('msgLine');
+
+let SIZE_R, SIZE_C;
+let grid = [];
+let cells = [];
+let rows = makeFallbackFarm();
+let running = false;
+let runMode = 'plain';            // 'plain' | 'spray' | 'lure' | 'combine'
+let day = 1;
+let animTimer = null;
+let clickMode = 'infest';
+let dailyEnv = [];
+let plants = [];                  // {r, c, cell, el, egg, worm, lureEl, farmerEl, badge, glow}
+let history = [];                 // day log
+let sprayEvents = [];
+let lureEvents = [];
+let sanitationEvents = [];        // hand-removal of infested shoots/fruit (combined IPM)
+let farmers = {};                 // plant index -> active farmer
+let fieldAnimTimers = [];         // timers for the field-wide spray/harvest sweep
+let autoSprayCooldown = 0;
+let underControlDays = 0;
+let harvestCount = 0;             // fruits (units) harvested
+
+/* ---------- biology parameters (mirrors generate_data.py) ---------- */
+const BIO = {
+  TMIN: 14.6, TOPT: 28.0,
+  DUR: { egg: 4, larva: 11, pupa: 8 },
+  ADULT_LIFE: 5,
+  EGG_NIGHTS: [0, 20, 14, 14],
+  EGG_CAP: 30,
+  LARVA_CAP: 5,
+  CRAWL_DIST: 3,
+  FLIGHT_MIN: 6, FLIGHT_MAX: 16,
+  BASE_MORT: { egg: 0.03, larva: 0.02, pupa: 0.015 },
+  RAIN_MORT: { egg: 0.10, larva: 0.05, pupa: 0.03 },
+  P_AMBIENT_CRAWL: 0.04
+};
+const SPRAY = {
+  DAYS: 5,             // residue persists ~5 days
+  EGG_KILL: 0.80,      // eggs sit exposed on leaves/calyx -> contact kill is high
+  NEONATE_KILL: 0.85,  // larvae only vulnerable for a few hours after hatching
+  PROTECTED_MORT: 0.10,// older larvae are sheltered inside shoots/fruit -> little kill
+  EXPOSED_DAYS: 0.5,   // vulnerability window after hatching (warm-days)
+  RESIDUAL_MORT: 0.30  // residue keeps killing new hatchlings during the window
+};
+const LURE = {
+  RADIUS: 3,          // trap attraction/trapping radius (Manhattan cells)
+  CATCH_MALE: 0.60,   // nightly male catch within a trap radius
+  CATCH_FAR: 0.15,    // lure still draws males from across a small plot
+  MATE_SUPPRESS: 0.50,// pheromone plume disrupts mating field-wide
+  NAT: 4
+};
+// Hand removal of damaged shoots/fruits (sanitation) — the 3rd component of the
+// IJACR 2021 best package. Reaches larvae sheltered inside the plant that sprays miss.
+const SANITATION = {
+  INTERVAL: 7, FRACTION: 0.45
+};
+const HARVEST = {
+  FIRST: 48,        // days after transplanting
+  EVERY: 4,         // picking every ~4 days (2x/week)
+  SEASON: 120,      // profitable season length (PH)
+  PER_PLANT: 3,     // fruits per plant per picking
+  DAMAGE: 0.4       // fruits destroyed per larva per picking
+};
+
+function growth(T) {
+  if (T <= BIO.TMIN) return 0;
+  let g = (T - BIO.TMIN) / (BIO.TOPT - BIO.TMIN);
+  return Math.max(0, Math.min(g, 1.6));
+}
+function mortality(stage, T, H, rainy) {
+  let m = BIO.BASE_MORT[stage];
+  if (rainy) m += BIO.RAIN_MORT[stage];
+  if (T >= 33) m += 0.12;
+  if (T < 20) m += 0.05;
+  if (H < 50) m += 0.10;
+  else if (H < 60) m += 0.03;
+  return Math.min(m, 0.95);
+}
+
+/* ---------- data loading ---------- */
+function parseCSV(text) {
+  // comma-separated; supports quoted fields (e.g. exported from a spreadsheet)
+  return text.trim().split(/\r?\n/).map(line => {
+    const out = [];
+    let cur = '', q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) {
+        if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ',') { out.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  });
+}
+
+function parseDailyEnv(csvRows) {
+  const perDay = {};
+  for (let i = 1; i < csvRows.length; i++) {
+    const cols = csvRows[i];
+    if (cols.length < 8) continue;
+    const dm = (cols[1] + '').match(/Day (\d+)/);
+    if (!dm) continue;
+    const d = parseInt(dm[1]);
+    const isPM = (cols[1] + '').includes('5:00 PM');
+    const entry = {
+      T: parseFloat(cols[2]) || 28.5,
+      H: parseFloat(cols[3]) || 80,
+      weather: cols[4] || 'Cloudy',
+      rainy: /Rainy/i.test(cols[4] || '')
+    };
+    if (!(d in perDay) || isPM) perDay[d] = entry;
+  }
+  const maxDay = Math.max.apply(null, Object.keys(perDay).map(Number));
+  const arr = [];
+  for (let d = 1; d <= maxDay; d++) arr.push(perDay[d] || FALLBACK_ENV);
+  return arr;
+}
+
+function dayEnv() {
+  return dailyEnv[Math.min(day, dailyEnv.length) - 1] || FALLBACK_ENV;
+}
+
+async function loadData() {
+  try {
+    const f = await fetch('farm.csv');
+    if (f.ok) {
+      const p = parseCSV(await f.text());
+      const nonEmpty = p.filter(row => row.some(v => v));
+      if (nonEmpty.length) rows = nonEmpty;
+    }
+  } catch (e) {}
+  if (!rows.length) rows = makeFallbackFarm();
+
+  try {
+    const o = await fetch('leucinodes_orbonalis_simulation.csv');
+    if (o.ok) {
+      const p = parseCSV(await o.text());
+      const e = parseDailyEnv(p);
+      if (e.length) dailyEnv = e;
+    }
+  } catch (e) {}
+
+  initGrid();
+}
+
+function msg(t) { msgLine.textContent = t; }
+
+/* ---------- grid build (DOM built ONCE, then only classes/text toggle) ---------- */
+function initGrid() {
+  SIZE_R = rows.length;
+  SIZE_C = Math.max(...rows.map(r => r.length));
+  gridEl.innerHTML = '';
+  gridEl.style.gridTemplateColumns = `repeat(${SIZE_C}, 44px)`;
+  grid = [];
+  cells = [];
+  plants = [];
+  history = [];
+  sprayEvents = [];
+  lureEvents = [];
+  sanitationEvents = [];
+  clearFieldAnim();
+  autoSprayCooldown = 0;
+  underControlDays = 0;
+  harvestCount = 0;
+  day = 1;
+  if (running) stopRun();
+  resetRunUI();
+
+  for (let r = 0; r < SIZE_R; r++) {
+    grid[r] = [];
+    cells[r] = [];
+    for (let c = 0; c < SIZE_C; c++) {
+      const isPlant = (rows[r][c] + '').toLowerCase().includes('plant');
+      grid[r][c] = { type: isPlant ? 'plant' : 'path', worms: [], spray: 0, lure: false };
+
+      const el = document.createElement('div');
+      el.className = 'cell ' + (isPlant ? 'plant healthy' : 'path');
+      cells[r][c] = el;
+
+      if (isPlant) {
+        const egg = document.createElement('div'); egg.className = 'egg';
+        const worm = document.createElement('div'); worm.className = 'worm';
+        const lureEl = document.createElement('div'); lureEl.className = 'lure'; lureEl.textContent = '🪤';
+        const farmerEl = document.createElement('div'); farmerEl.className = 'farmer'; farmerEl.textContent = '🧑‍🌾💦';
+        const badge = document.createElement('div'); badge.className = 'badge'; badge.style.display = 'none';
+        const glow = document.createElement('div'); glow.className = 'sprayglow';
+        el.appendChild(egg); el.appendChild(worm); el.appendChild(lureEl);
+        el.appendChild(farmerEl); el.appendChild(badge); el.appendChild(glow);
+        el.addEventListener('click', () => cellClick(r, c));
+        plants.push({ r, c, cell: grid[r][c], el, egg, worm, lureEl, farmerEl, badge, glow });
+      }
+      gridEl.appendChild(el);
+    }
+  }
+  render();
+  renderDay();
+  renderWeather();
+  msg('Farm ready. Seed Farm, then choose a run mode (Daily / +Pheromone / +Spray).');
+}
+
+/* ---------- rendering (no DOM re-creation -> animations keep running) ---------- */
+function cellGlyph(worms) {
+  const n = worms.length;
+  const larvae = worms.filter(w => w.stage === 'larva' || w.stage === 'pupa').length;
+  const moths = worms.filter(w => w.stage === 'adult').length;
+  let shown = 0;
+  const toShow = Math.min(3, n);
+  let sym = '';
+  for (let i = 0; i < larvae && shown < toShow; i++) { sym += '🐛'; shown++; }
+  for (let j = 0; j < moths && shown < toShow; j++) { sym += '🦋'; shown++; }
+  return { sym, cls: (larvae === 0 && moths > 0) ? 'moth' : 'worm', count: n, showBadge: n > toShow };
+}
+
+function render() {
+  for (let i = 0; i < plants.length; i++) {
+    const p = plants[i];
+    const worms = p.cell.worms;
+    const nEgg = worms.filter(w => w.stage === 'egg').length;
+    const n = worms.length;
+
+    if (n > 0) { p.el.classList.remove('healthy'); p.el.classList.add('infested'); }
+    else { p.el.classList.remove('infested'); p.el.classList.add('healthy'); }
+
+    p.egg.classList.toggle('has-eggs', nEgg > 0);
+    p.glow.style.display = p.cell.spray > 0 ? 'block' : 'none';
+    p.el.classList.toggle('sprayed', p.cell.spray > 0);
+    p.lureEl.style.display = p.cell.lure ? 'block' : 'none';
+    p.el.classList.toggle('lured', p.cell.lure);
+    p.el.classList.toggle('farming', farmers[i] === true);
+
+    const g = cellGlyph(worms);
+    p.worm.className = g.cls;
+    if (g.count > 0) {
+      p.worm.style.display = 'flex';
+      if (p.worm.textContent !== g.sym) p.worm.textContent = g.sym;
+    } else {
+      p.worm.style.display = 'none';
+    }
+    g.showBadge
+      ? (p.badge.style.display = 'flex', p.badge.textContent = '×' + g.count)
+      : (p.badge.style.display = 'none');
+  }
+  updateStats();
+}
+
+function updateStats() {
+  let h = 0, i = 0, wsum = 0, sc = 0, lc = 0, t = 0;
+  for (const p of plants) {
+    t++;
+    wsum += p.cell.worms.length;
+    if (p.cell.spray > 0) sc++;
+    if (p.cell.lure) lc++;
+    if (p.cell.worms.length === 0) h++;
+    else i++;
+  }
+  healthyEl.textContent = h;
+  infestedEl.textContent = i;
+  wormTotalEl.textContent = wsum;
+  sprayTotalEl.textContent = sc;
+  lureTotalEl.textContent = lc;
+  harvestEl.textContent = harvestCount;
+  totalEl.textContent = t;
+  const pct = t ? Math.round(i / t * 100) : 0;
+  document.getElementById('rateLabel').textContent = pct + '%';
+  document.getElementById('barHealthy').style.flex = String(h);
+  document.getElementById('barInfested').style.flex = String(i);
+  return { pct, wsum };
+}
+
+function renderDay() { dayEl.textContent = 'Day ' + day; }
+
+function renderWeather() {
+  const e = dayEnv();
+  const icon = e.rainy ? '🌧' : /Sunny/.test(e.weather) ? '☀' : /Clear/.test(e.weather) ? '🌤' : '☁';
+  weatherLine.textContent = 'Weather: ' + icon + ' ' + e.T.toFixed(1) + '°C · ' + e.H + '% RH · ' + e.weather + ' | Day ' + day;
+}
+
+/* ---------- tools ---------- */
+function plantAt(r, c) {
+  for (const p of plants) if (p.r === r && p.c === c) return p;
+  return null;
+}
+
+function cellClick(r, c) {
+  const p = plantAt(r, c);
+  if (!p) return;
+  const cell = p.cell;
+  if (clickMode === 'infest') {
+    cell.worms.push({ stage: 'larva', progress: 1.0, age: 1 });
+    msg('Added a borer larva.');
+  } else if (clickMode === 'heal') {
+    for (let i = cell.worms.length - 1; i >= 0; i--) {
+      if (cell.worms[i].stage === 'larva') { cell.worms.splice(i, 1); break; }
+    }
+    msg('Hand-picked (removed) a larva.');
+  } else if (clickMode === 'spray') {
+    applySpray(true);
+  } else if (clickMode === 'lure') {
+    cell.lure = !cell.lure;
+    msg(cell.lure ? 'Pheromone trap placed (water trap, 4 mg lure, ~1 m high).'
+                 : 'Trap removed.');
+    if (cell.lure) lureEvents.push({ day: day, at: p.r + ',' + p.c });
+  }
+  render();
+  refreshRunButtons();
+}
+
+function clearFieldAnim() {
+  fieldAnimTimers.forEach(t => clearTimeout(t));
+  fieldAnimTimers = [];
+  for (const k in farmers) delete farmers[k];
+  for (const p of plants) {
+    p.el.classList.remove('harvesting');
+    p.farmerEl.textContent = '🧑‍🌾💦';
+  }
+}
+
+// Sweep the farmer(s) across every plant, row by row (whole-field spray or harvest).
+function animateFieldAction(kind) {
+  clearFieldAnim();
+  const harvest = kind === 'harvest';
+  let delay = 0;
+  const rowSet = [...new Set(plants.map(p => p.r))].sort((a, b) => a - b);
+  for (const r of rowSet) {
+    const rowPlants = plants.filter(p => p.r === r);
+    fieldAnimTimers.push(setTimeout(() => {
+      for (const p of rowPlants) {
+        farmers[plants.indexOf(p)] = true;
+        if (harvest) p.el.classList.add('harvesting');
+        p.farmerEl.textContent = harvest ? '🧑‍🌾🧺' : '🧑‍🌾💦';
+      }
+      render();
+    }, delay));
+    delay += 55;
+  }
+  fieldAnimTimers.push(setTimeout(() => { clearFieldAnim(); render(); }, delay + 1300));
+}
+
+// A farmer sprays the whole plot in a single day (not a small radius).
+function applySpray(manual, cooldown) {
+  const killed = { egg: 0, larva: 0 };
+  let count = 0;
+  for (const q of plants) {
+    q.cell.spray = SPRAY.DAYS;
+    count++;
+    const worms = q.cell.worms;
+    for (let i = worms.length - 1; i >= 0; i--) {
+      const w = worms[i];
+      if (w.stage === 'egg' && Math.random() < SPRAY.EGG_KILL) { worms.splice(i, 1); killed.egg++; }
+      else if (w.stage === 'larva') {
+        const exposed = w.progress < SPRAY.EXPOSED_DAYS;
+        const kill = exposed ? SPRAY.NEONATE_KILL : SPRAY.PROTECTED_MORT;
+        if (Math.random() < kill) { worms.splice(i, 1); killed.larva++; }
+      }
+    }
+  }
+  sprayEvents.push({ day, count, killed, manual });
+  animateFieldAction('spray');
+  const wait = cooldown || SPRAY_REPEAT;
+  const how = manual ? 'You sprayed' : 'Farmer auto-sprayed';
+  msg(`${how} the whole farm (${count} plants) in one day — killed ${killed.egg} eggs, ${killed.larva} larvae. Re-spray in ${wait}–${wait + 3} days.`);
+  autoSprayCooldown = wait;
+  render();
+}
+
+/* ---------- pheromone lures ---------- */
+function placeAutoLures() {
+  // Research: mass trapping uses an even grid across the plot — the 2024
+  // Bangladesh trial used a 2x2 grid for 4 traps and 4x6 (~10 m spacing) for 24,
+  // and found edge/clustered traps left the field under-covered.
+  const n = Math.min(LURE.NAT, plants.length);
+  if (!n) return;
+  const rMin = Math.min(...plants.map(p => p.r)), rMax = Math.max(...plants.map(p => p.r));
+  const cMin = Math.min(...plants.map(p => p.c)), cMax = Math.max(...plants.map(p => p.c));
+  const fH = rMax - rMin + 1, fW = cMax - cMin + 1;
+
+  // pick the grid shape closest to the field's aspect ratio with >= n cells
+  let bestGr = 1, bestGc = n, bestCost = Infinity;
+  for (let gr = 1; gr <= n; gr++) {
+    const gc = Math.ceil(n / gr);
+    const cost = Math.abs(Math.log((gr / gc) / (fH / fW))) + (gr * gc - n) * 0.1;
+    if (cost < bestCost) { bestCost = cost; bestGr = gr; bestGc = gc; }
+  }
+
+  let placed = 0;
+  for (let gr = 0; gr < bestGr && placed < n; gr++) {
+    for (let gc = 0; gc < bestGc && placed < n; gc++) {
+      const tr = rMin + (gr + 0.5) * fH / bestGr;
+      const tc = cMin + (gc + 0.5) * fW / bestGc;
+      let best = null, bestD = Infinity;
+      for (const p of plants) {
+        if (p.cell.lure) continue;
+        const d = Math.hypot(p.r - tr, p.c - tc);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      if (best) {
+        best.cell.lure = true;
+        placed++;
+        lureEvents.push({ day: day, at: best.r + ',' + best.c });
+      }
+    }
+  }
+  msg(`Placed ${placed} pheromone traps in an even ${bestGr}×${bestGc} grid across the farm (water trap, 4 mg lure, ~1 m high).`);
+  render();
+}
+
+function lureNear(p) {
+  for (const q of plants) {
+    if (!q.cell.lure) continue;
+    const d = Math.abs(q.r - p.r) + Math.abs(q.c - p.c);
+    if (d <= LURE.RADIUS) return true;
+  }
+  return false;
+}
+
+/* ---------- biology step (mirrors generate_data.py, + spray residue, lures, starvation) ---------- */
+function layEggs(p, count) {
+  const eps = p.worms.filter(w => w.stage === 'egg').length;
+  const room = Math.max(0, BIO.EGG_CAP - eps);
+  for (let k = 0; k < Math.min(count, room); k++)
+    p.worms.push({ stage: 'egg', progress: 0, age: 0 });
+}
+
+function pickFlightTarget(src) {
+  const far = [];
+  for (const q of plants) {
+    const d = Math.abs(q.r - src.r) + Math.abs(q.c - src.c);
+    if (d >= BIO.FLIGHT_MIN && d <= BIO.FLIGHT_MAX) far.push(q);
+  }
+  const pool = far.length ? far : plants;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function crawlNeighbour(src) {
+  const cands = [];
+  for (const q of plants) {
+    const d = Math.abs(q.r - src.r) + Math.abs(q.c - src.c);
+    if (d < 1 || d > BIO.CRAWL_DIST) continue;
+    const larvae = q.cell.worms.filter(w => w.stage === 'larva').length;
+    cands.push({ q, crowded: Math.max(0, larvae - BIO.LARVA_CAP), d });
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => a.crowded - b.crowded || a.d - b.d);
+  return cands[0].q;
+}
+
+function removeWormFrom(w, cell) {
+  const i = cell.worms.indexOf(w);
+  if (i >= 0) cell.worms.splice(i, 1);
+}
+
+function stepDay() {
+  const e = dayEnv();
+  const T = e.T, H = e.H, rainy = e.rainy;
+  // Sim Speed only changes how fast real time advances; pest biology stays fixed
+  // (so lowering it never changes the outcome, only the viewing pace).
+  const g = growth(T);
+  const flights = [];
+
+  // pheromone mass-trapping: lure draws males from across the small plot,
+  // with a much higher nightly catch close to a trap
+  if (runMode === 'lure' || runMode === 'combine') {
+    for (const p of plants) {
+      const worms = p.cell.worms;
+      const near = lureNear(p);
+      const catchP = near ? LURE.CATCH_MALE : LURE.CATCH_FAR;
+      for (let i = worms.length - 1; i >= 0; i--) {
+        if (worms[i].stage === 'adult' && worms[i].sex === 'm' && Math.random() < catchP)
+          worms.splice(i, 1);
+      }
+    }
+  }
+
+  for (const p of plants) {
+    const cell = p.cell;
+    const sprayed = cell.spray > 0;
+    // a 4 mg lure saturates a small plot, so mating disruption acts field-wide
+    const matingDisrupted = (runMode === 'lure' || runMode === 'combine');
+    const seen = cell.worms.slice();
+    for (const w of seen) {
+      if (w.stage !== 'adult') {
+        let m = mortality(w.stage, T, H, rainy);
+        // residue only reaches exposed eggs and freshly-hatched larvae
+        // (older larvae are inside shoots/fruit; pupae are in the soil)
+        if (sprayed && (w.stage === 'egg' || (w.stage === 'larva' && w.progress < SPRAY.EXPOSED_DAYS))) {
+          m = Math.min(0.95, m + SPRAY.RESIDUAL_MORT);
+        }
+        // starvation when overcrowded (density dependence)
+        if (w.stage === 'larva') {
+          const larvaN = cell.worms.filter(x => x.stage === 'larva').length;
+          if (larvaN > BIO.LARVA_CAP) m = Math.min(0.95, m + 0.05 * (larvaN - BIO.LARVA_CAP));
+        }
+        if (Math.random() < m) { removeWormFrom(w, cell); continue; }
+      }
+      if (w.stage === 'egg') {
+        w.progress += g;
+        if (w.progress >= BIO.DUR.egg) { w.stage = 'larva'; w.progress = 0; }
+      } else if (w.stage === 'larva') {
+        w.progress += g;
+        if (w.progress >= BIO.DUR.larva) { w.stage = 'pupa'; w.progress = 0; }
+      } else if (w.stage === 'pupa') {
+        w.progress += g;
+        if (w.progress >= BIO.DUR.pupa) {
+          w.stage = 'adult'; w.age = 0;
+          w.sex = Math.random() < 0.5 ? 'f' : 'm';
+          flights.push({ w, src: p });
+        }
+      } else {
+        w.age++;
+        if (w.age > BIO.ADULT_LIFE) { removeWormFrom(w, cell); continue; }
+        if (w.sex === 'f' && w.age < BIO.EGG_NIGHTS.length) {
+          let laid = BIO.EGG_NIGHTS[w.age];
+          if (matingDisrupted) laid = Math.round(laid * LURE.MATE_SUPPRESS);
+          if (laid > 0) layEggs(cell, laid);
+        }
+      }
+    }
+  }
+
+  // combined IPM: weekly hand-removal (sanitation) of infested shoots/fruits —
+  // reaches the larvae that sprays cannot (they are sheltered inside the plant)
+  if (runMode === 'combine' && day % SANITATION.INTERVAL === 0) {
+    let removed = 0;
+    for (const p of plants) {
+      const worms = p.cell.worms;
+      for (let i = worms.length - 1; i >= 0; i--) {
+        const w = worms[i];
+        if (w.stage === 'larva' && w.progress >= SPRAY.EXPOSED_DAYS && Math.random() < SANITATION.FRACTION) {
+          worms.splice(i, 1); removed++;
+        }
+      }
+    }
+    if (removed > 0) sanitationEvents.push({ day, removed });
+  }
+
+  for (const f of flights) {
+    const target = pickFlightTarget(f.src);
+    removeWormFrom(f.w, f.src.cell);
+    target.cell.worms.push(f.w);
+  }
+
+  const movers = [];
+  for (const p of plants) {
+    const cell = p.cell;
+    const larvae = cell.worms.filter(w => w.stage === 'larva');
+    let excess = Math.max(0, larvae.length - BIO.LARVA_CAP);
+    const prob = Math.min(0.35, BIO.P_AMBIENT_CRAWL + 0.06 * (excess / BIO.LARVA_CAP));
+    for (const w of larvae) {
+      if (Math.random() < prob || excess > 0) {
+        excess = Math.max(0, excess - 1);
+        movers.push({ p, w });
+      }
+    }
+  }
+  for (const m of movers) {
+    if (!m.p.cell.worms.includes(m.w)) continue;
+    const target = crawlNeighbour(m.p);
+    if (target && target.cell !== m.p.cell) {
+      removeWormFrom(m.w, m.p.cell);
+      target.cell.worms.push(m.w);
+    }
+  }
+
+  // residue decays at end of day
+  for (const p of plants) if (p.cell.spray > 0) p.cell.spray--;
+
+  day++;
+  render();
+  renderDay();
+  renderWeather();
+
+  // harvest: first picking 48 DAT, then every ~4 days
+  if (day >= HARVEST.FIRST && (day - HARVEST.FIRST) % HARVEST.EVERY === 0) {
+    let gain = 0;
+    for (const p of plants) {
+      const fruits = HARVEST.PER_PLANT;
+      const larvaN = p.cell.worms.filter(w => w.stage === 'larva').length;
+      gain += Math.max(0, fruits - Math.min(fruits, larvaN * HARVEST.DAMAGE));
+    }
+    harvestCount += Math.round(gain);
+    animateFieldAction('harvest');
+    msg(`🍆 Harvest on Day ${day}: +${Math.round(gain)} marketable fruits (at harvest season: first pick 46–50 DAT, then 2×/week).`);
+  }
+
+  recordHistory();
+}
+
+function recordHistory() {
+  const e = dayEnv();
+  let borers = 0, infested = 0, sprays = 0, lures = 0;
+  for (const p of plants) {
+    borers += p.cell.worms.length;
+    if (p.cell.worms.length > 0) infested++;
+    if (p.cell.spray > 0) sprays++;
+    if (p.cell.lure) lures++;
+  }
+  const pct = plants.length ? infested / plants.length * 100 : 0;
+  history.push({ day, T: e.T, H: e.H, weather: e.weather, rainy: e.rainy,
+                 borers, infested, pct: Math.round(pct * 10) / 10, sprays, lures });
+}
+
+/* ---------- run controls ---------- */
+// The auto-run buttons need borers on the farm, otherwise a run has no result.
+function farmHasBorers() {
+  for (const p of plants) if (p.cell.worms.length) return true;
+  return false;
+}
+function refreshRunButtons() {
+  const locked = !running && !farmHasBorers();
+  for (const id of ['runBtn', 'runLureBtn', 'runSprayBtn', 'runCombBtn'])
+    document.getElementById(id).classList.toggle('needs-seed', locked);
+}
+function guardRun() {
+  if (farmHasBorers()) return true;
+  msg('No borers on the farm — press “Seed Farm” or use the Infest tool first.');
+  return false;
+}
+
+function resetRunUI() {
+  running = false;
+  document.getElementById('runBtn').textContent = 'Run Daily';
+  document.getElementById('runBtn').className = 'btn-run';
+  document.getElementById('runLureBtn').textContent = 'Run + Pheromone';
+  document.getElementById('runLureBtn').className = 'btn-lure';
+  document.getElementById('runSprayBtn').textContent = 'Run + Spray';
+  document.getElementById('runSprayBtn').className = 'btn-spray';
+  document.getElementById('runCombBtn').textContent = 'Run + Lure & Spray';
+  document.getElementById('runCombBtn').className = 'btn-combine';
+  if (animTimer) { clearInterval(animTimer); animTimer = null; }
+  refreshRunButtons();
+}
+
+function stopRun() { if (running) resetRunUI(); }
+
+function startRun(mode) {
+  runMode = mode;
+  autoSprayCooldown = 0;
+  underControlDays = 0;
+  if (runMode === 'lure' || runMode === 'combine') placeAutoLures();
+  running = true;
+  refreshRunButtons();
+  const labelMap = { plain: ['Pause', 'btn-run', 'runBtn'],
+                     lure: ['Pause (Phero)', 'btn-lure', 'runLureBtn'],
+                     spray: ['Pause (Spray)', 'btn-spray', 'runSprayBtn'],
+                     combine: ['Pause (Lure+Spray)', 'btn-combine', 'runCombBtn'] };
+  const [txt, cls, id] = labelMap[mode];
+  const btn = document.getElementById(id);
+  btn.textContent = '▶ ' + txt;
+  btn.className = cls + ' active';
+  msg(runMode === 'plain' ? 'No control — running until borers are under control.' :
+      runMode === 'lure' ? 'Pheromone-lure run — traps catch male moths; simulating to harvest.' :
+      runMode === 'combine' ? 'Combined IPM run — pheromone traps + whole-farm threshold sprays (every ~10 days); simulating to harvest.' :
+                              'Pesticide run — farmer sprays the whole plot in a day at ≥5% threshold; simulating to harvest.');
+  animTimer = setInterval(runStep, tickDelay());
+}
+
+// Real-time delay per simulated day from the Sim Speed slider (1.00x -> 500ms/day).
+function tickDelay() {
+  const mult = Math.max(0.25, parseInt(speedSlider.value) / 100);
+  return Math.max(60, Math.round(500 / mult));
+}
+
+function runStep() {
+  if (!running) return;
+  stepDay();
+  const s = updateStats();
+
+  // no borers
+  let any = false;
+  for (const p of plants) if (p.cell.worms.length) { any = true; break; }
+  if (!any) { stopRun(); msg('No borers left on the farm.'); openReport(true); return; }
+
+  // safety cap
+  if (s.pct >= MAX_INFEST_PCT || s.wsum >= MAX_BORERS) {
+    stopRun(); msg('Infestation out of control — opening report.'); openReport(true); return;
+  }
+
+  if (runMode === 'plain') {
+    // plain run: keep going until under control
+    if (s.pct <= CONTROL_THRESHOLD) underControlDays++;
+    else underControlDays = 0;
+    if (underControlDays >= CONTROL_DAYS_REQ) {
+      stopRun(); msg('Borer population is under control (≤2% for 3 days). Opening report.'); openReport(true); return;
+    }
+  } else {
+    // lure / spray runs: go until harvest season ends
+    if (day >= HARVEST.SEASON) {
+      stopRun(); msg('Harvest season finished (≈120 days). Opening report.'); openReport(true); return;
+    }
+    // auto pesticide application (whole plot in one day)
+    if ((runMode === 'spray' || runMode === 'combine') && autoSprayCooldown <= 0 && s.pct >= SPRAY_THRESHOLD) {
+      // combined IPM sprays less often (research: ~10-day interval)
+      applySpray(false, runMode === 'combine' ? 10 : SPRAY_REPEAT);
+      updateStats();
+    } else if (autoSprayCooldown > 0) {
+      autoSprayCooldown--;
+    }
+  }
+}
+
+/* ---------- report ---------- */
+function infestedPctNow() {
+  let i = 0;
+  for (const p of plants) if (p.cell.worms.length > 0) i++;
+  return plants.length ? i / plants.length * 100 : 0;
+}
+
+function buildReport() {
+  if (!history.length) recordHistory();
+  const rows = history;
+  const last = rows[rows.length - 1] || { pct: 0, borers: 0 };
+
+  const pct5 = rows.find(r => r.pct >= 5);
+  const everHadBorers = rows.some(r => r.borers > 0);
+  const maxRow = rows.reduce((a, b) => b.pct > a.pct ? b : a, rows[0] || { pct: 0, day: 0 });
+  const level = last.pct >= 20 ? 3 : last.pct >= 5 ? 2 : last.pct > 0 ? 1 : 0;
+  const strategy = runMode === 'plain' ? 'No control' : runMode === 'lure' ? 'Pheromone lure' : runMode === 'combine' ? 'Pheromone + spray (combined IPM)' : 'Pesticide spray';
+
+  const today = dayEnv();
+  let bars = '<div class="rate-bars">';
+  for (const r of rows) {
+    const h = Math.max(2, Math.round(r.pct * 0.6));
+    bars += `<span style="height:${h}px" title="Day ${r.day}: ${r.pct}%"></span>`;
+  }
+  bars += '</div>';
+
+  const harvestStart = HARVEST.FIRST;
+  const harvestsSoFar = day >= harvestStart ? Math.floor((Math.min(day, HARVEST.SEASON) - harvestStart) / HARVEST.EVERY) + 1 : 0;
+
+  const summary = `
+    <div class="r-summary">
+      <div><b>Strategy:</b> ${strategy}</div>
+      <div><b>Plants:</b> ${plants.length}</div>
+      <div><b>Days:</b> ${rows.length}</div>
+      <div><b>Peak infestation:</b> ${maxRow.pct}% (Day ${maxRow.day})</div>
+      <div><b>Final:</b> ${last.pct}% · ${last.borers} borers</div>
+      <div><b>Sprays:</b> ${sprayEvents.length}</div>
+      <div><b>Lures:</b> ${plants.filter(p => p.cell.lure).length} traps</div>
+      <div><b>Harvest:</b> ${harvestsSoFar} pickings · ${harvestCount} 🍆</div>
+    </div>`;
+
+  const levelTag = ['<span class="tag ok">LOW / SAFE</span>',
+                    '<span class="tag warn">ALERT</span>',
+                    '<span class="tag crit">ACTION NEEDED</span>',
+                    '<span class="tag crit">OUT OF CONTROL</span>'][level];
+
+  let adv = '';
+  if (runMode === 'spray') {
+    adv = `<li>Pesticide run active — the farmer sprays the <b>whole plot (every plant) in one day</b> once the ~5% threshold is crossed, re-applying every <b>7–10 days</b>. Residue lasts ~5–7 days.</li>
+      <li>Use rotating chemistry (efficacy order, IJPSS 2023): <b>chlorantraniliprole</b> (best yield, ~1:8.3 benefit-cost), <b>spinosad</b>, <b>emamectin benzoate</b>, <b>indoxacarb</b>, <b>flubendiamide</b>.</li>
+      <li>Evening or early-morning sprays for a few hours after hatching — larvae bore in fast and become unreachable.</li>`;
+  } else if (runMode === 'lure') {
+    adv = `<li>Pheromone run active — water traps with <b>4 mg lure, rubber septum, ~1 m high</b>, catching <b>male moths</b> and suppressing mating (mating-disruption effect ~50% fewer viable eggs).</li>
+      <li>Research: BSFB-Phero (3 mg) + <b>Bt (Bio BTK)</b> cut shoot infestation to <b>14.47% vs 33.85%</b> control and gave the highest marketable fruit (7.15/m², 7.11 t/ha).</li>
+      <li>Traps are great for monitoring <i>and</i> mass trapping; add hand-picking of infested shoots too.</li>`;
+  } else if (runMode === 'combine') {
+    adv = `<li><b>Combined IPM run</b> — pheromone traps mass-trap male moths (fewer matings) <i>plus</i> whole-farm sprays only at the ~5% threshold, re-applied every <b>~10 days</b> (fewer sprays than farmer practice).</li>
+      <li>Research: <b>spray @10-day interval + pheromone trap + hand removal</b> gave <b>95.96% shoot / 94.85% fruit reduction</b> — the best of all packages tested (IJACR 2021, Bangladesh), beating spray-only (91.6% / 89.2%).</li>
+      <li>Traps + sprays together beat either alone; traps also act as early-warning monitors and reduce the number of insecticide applications (EPPO PP 1/264 combined-programme standard).</li>
+      <li>Weekly <b>hand removal</b> of damaged shoots/fruits is the third leg — it clears the larvae that sprays cannot reach (sheltered inside the plant).</li>`;
+  } else {
+    adv = level >= 2
+      ? `<li>Crossed the <b>~5% action threshold</b> on Day ${pct5 ? pct5.day : '?'} — no control was applied; consider a spray, lure, or combined run.</li>
+         <li>First-chance measures: hand-pick infested shoots, remove damaged fruits, light traps at night.</li>`
+      : `<li>Infestation stayed low — keep monitoring, harvest early-morning, remove infected parts.</li>`;
+  }
+
+  let events = '<ul class="rec-list">';
+  if ((runMode === 'spray' || runMode === 'combine') && sprayEvents.length) {
+    sprayEvents.forEach(ev => events += `<li>Day ${ev.day}: ${ev.manual ? 'manual' : 'auto'} spray — whole farm (${ev.count} plants) — removed ${ev.killed.egg} eggs + ${ev.killed.larva} larvae.</li>`);
+  }
+  if ((runMode === 'lure' || runMode === 'combine') && lureEvents.length) {
+    lureEvents.forEach(ev => events += `<li>Day ${ev.day}: trap placed at ${ev.at}.</li>`);
+    events += `<li><b>${plants.filter(p => p.cell.lure).length}</b> water traps active (4 mg lure / rubber septum / ~1 m).</li>`;
+  }
+  if (runMode === 'combine' && sanitationEvents.length) {
+    const total = sanitationEvents.reduce((a, e) => a + e.removed, 0);
+    events += `<li>Hand removal (sanitation): <b>${sanitationEvents.length}</b> weekly rounds, cleared <b>${total}</b> larvae sheltered in shoots/fruit.</li>`;
+  }
+  if (events === '<ul class="rec-list">') events += '<li>No interventions were applied in this run.</li>';
+  events += '</ul>';
+
+  const hotStart = pct5 ? `<tr><td colspan="3"><i>Crossed the <b>5% action threshold on Day ${pct5.day}</b></i></td></tr>` : '';
+
+  const table = `
+    <h4>Daily log</h4>
+    <table class="r-table">
+      <tr><th>Day</th><th>Weather</th><th>°C / RH%</th><th>Borers</th><th>Infested</th><th>Rate</th></tr>
+      ${rows.map(r => `<tr class="${r.pct >= 20 ? 'hot' : ''}"><td>${r.day}</td><td>${r.weather}${r.rainy ? ' 🌧' : ''}</td><td>${r.T.toFixed(1)} / ${r.H}%</td><td>${r.borers}</td><td>${r.infested}</td><td>${r.pct}%</td></tr>`).join('')}
+      ${hotStart}
+    </table>`;
+
+  const harvestSection = `
+    <h4>🍆 Harvest &amp; eggplant life</h4>
+    <table class="r-table">
+      <tr><th>Factor</th><th>Research value</th><th>This simulation</th></tr>
+      <tr><td>First harvest (DAT)</td><td>46–50 (PH DA production guide)</td><td>Day ${harvestStart} onward</td></tr>
+      <tr><td>Picking frequency</td><td>Every 3–4 days (2×/week)</td><td>Every ${HARVEST.EVERY} days</td></tr>
+      <tr><td>Profitable season</td><td>≈120 days (Bt-eggplant PH field trials)</td><td>Day 1→120</td></tr>
+      <tr><td>Pickings completed</td><td>10–17+ (PH trials recorded 10–17 harvest periods)</td><td>${harvestsSoFar}</td></tr>
+      <tr><td>Marketable fruit</td><td>—</td><td>${harvestCount} 🍆 (borers destroy ~${HARVEST.DAMAGE} fruit/larva/picking)</td></tr>
+    </table>
+    <ul class="rec-list">
+      <li>Harvest early in the morning, pick <b>all</b> fruits to prolong the fruiting period, carry fruits carefully (PH DA).</li>
+      <li>Borer larvae destroy fruit tissue — even slightly damaged fruit is unmarketable (Wikipedia / ZMB).</li>
+    </ul>`;
+
+  const strategyCompare = `
+    <h4>Strategy comparison (research)</h4>
+    <table class="r-table">
+      <tr><th>Strategy</th><th>Result (research)</th><th>Key source</th></tr>
+      <tr><td>No control</td><td>Up to 33.85% shoot infestation; 20–90% yield loss possible</td><td>BAU Mymensingh 2023; journal IJPSS</td></tr>
+      <tr><td>Pheromone lure</td><td>Water trap w/ 4 mg lure best for mass trapping; lure + Bt cut infestation to 14.47%</td><td>IIHR J. Hort. Sci. 2006; IJACR 2023</td></tr>
+      <tr><td>Pesticide spray (PH)</td><td>Many farms spray 50–120× per season (unsustainable); chlorantraniliprole gave best yield (~1:8.3 benefit-cost), then spinosad/emamectin/indoxacarb/flubendiamide</td><td>IJPSS 2023; JEAI 2025; J. Exp. Agric. Int.</td></tr>
+      <tr><td>Pheromone + spray (combined)</td><td>Spray @10-day interval + pheromone trap + hand removal → 95.96% shoot / 94.85% fruit reduction (best package); traps cut insecticide applications</td><td>IJACR 2021; EPPO PP 1/264</td></tr>
+    </table>`;
+
+  return `
+    <h3>📊 Farm Simulation Report</h3>
+    <div class="expl">Eggplant fruit &amp; shoot borer (Leucinodes orbonalis) · ${plants.length} plants</div>
+    ${everHadBorers ? '' : '<div class="expl" style="color:#ffcc80"><b>No borers were added</b> — this was a manual (+1 Day) run, so the report covers the <b>harvest only</b>.</div>'}
+    ${summary}
+    <h4>Infestation rate over time ${levelTag}</h4>
+    ${bars}
+    <div class="expl">Infested plants ÷ total plants, per simulated day.</div>
+    <h4>Recommendations (this run: ${strategy})</h4>
+    <ul class="rec-list">${adv}</ul>
+    <h4>Interventions applied</h4>
+    ${events}
+    ${harvestSection}
+    ${strategyCompare}
+    <h4>Research notes &amp; weather</h4>
+    <ul class="rec-list">
+      <li>Temp now ${today.T.toFixed(1)}°C, RH ${today.H}% ${today.rainy ? '· RAIN — avoid spraying, it washes off.' : ''}</li>
+      <li>Life cycle: egg 3–6 d → larva ~11 d (5–6 instars) → pupa ~8 d → adult ~5 d; Tmin 14.6°C, thermal sum ~444 DD.</li>
+      <li>Full research + source links: <b>Research-Sources.md</b> in the project folder.</li>
+    </ul>`;
+}
+
+function openReport(auto) {
+  document.getElementById('reportBody').innerHTML = buildReport();
+  document.getElementById('reportModal').classList.add('show');
+  if (auto) { /* just opened during run */ }
+}
+
+/* ---------- research sources (render Research-Sources.md in a modal) ---------- */
+function mdInline(s) {
+  let out = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const links = [];
+  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => {
+    links.push(`<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+    return `\x00${links.length - 1}\x00`;
+  });
+  out = out.replace(/(https?:\/\/[^\s)<>]+)/g, (u) => {
+    links.push(`<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+    return `\x00${links.length - 1}\x00`;
+  });
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>')
+           .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+           .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return out.replace(/\x00(\d+)\x00/g, (m, i) => links[+i]);
+}
+
+function renderMarkdown(md) {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const isTableSep = l => /^\s*\|[\s:|-]+\|\s*$/.test(l);
+  const isListItem = l => /^\s*([-*+]|\d+\.)\s+/.test(l);
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*$/.test(l)) { i++; continue; }
+
+    if (l.trim().startsWith('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const head = cells(l); i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(cells(lines[i])); i++; }
+      html += '<table class="r-table"><thead><tr>' + head.map(c => `<th>${mdInline(c)}</th>`).join('') +
+        '</tr></thead><tbody>' + rows.map(r => '<tr>' + r.map(c => `<td>${mdInline(c)}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table>';
+      continue;
+    }
+
+    const h = l.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { const n = Math.min(h[1].length + 1, 6); html += `<h${n}>${mdInline(h[2])}</h${n}>`; i++; continue; }
+
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) { html += '<hr>'; i++; continue; }
+
+    if (/^\s*>/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+      html += '<blockquote>' + buf.map(mdInline).join('<br>') + '</blockquote>';
+      continue;
+    }
+
+    if (isListItem(l)) {
+      const ordered = /^\s*\d+\./.test(l);
+      const items = [];
+      while (i < lines.length) {
+        if (isListItem(lines[i])) { items.push(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/, '')); i++; }
+        else if (items.length && !/^\s*$/.test(lines[i]) && /^\s+/.test(lines[i])) { items[items.length - 1] += ' ' + lines[i].trim(); i++; }
+        else break;
+      }
+      const tag = ordered ? 'ol' : 'ul';
+      html += `<${tag}>` + items.map(t => `<li>${mdInline(t)}</li>`).join('') + `</${tag}>`;
+      continue;
+    }
+
+    const buf = [l]; i++;
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !isListItem(lines[i]) && !/^\s*>/.test(lines[i]) &&
+           !/^#{1,6}\s/.test(lines[i]) && !/^\s*(-{3,}|\*{3,})\s*$/.test(lines[i]) && !lines[i].trim().startsWith('|')) {
+      buf.push(lines[i]); i++;
+    }
+    html += '<p>' + mdInline(buf.join(' ')) + '</p>';
+  }
+  return html;
+}
+
+let sourcesCache = null;
+async function openSources() {
+  const body = document.getElementById('sourcesBody');
+  document.getElementById('sourcesModal').classList.add('show');
+  if (sourcesCache) { body.innerHTML = sourcesCache; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await fetch('Research-Sources.md');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    sourcesCache = renderMarkdown(await r.text());
+    body.innerHTML = sourcesCache;
+  } catch (e) {
+    body.innerHTML = '<h2>Research Sources</h2><p>Could not load <code>Research-Sources.md</code> (serve the folder with <code>server.py</code>).</p>';
+  }
+}
+document.getElementById('sourcesBtn').addEventListener('click', openSources);
+document.getElementById('sourcesClose').addEventListener('click', () =>
+  document.getElementById('sourcesModal').classList.remove('show'));
+
+document.getElementById('dayBtn').addEventListener('click', () => {
+  if (running) stopRun();
+  // manual mode is capped at the 120-day season; then open the report
+  if (day >= HARVEST.SEASON) {
+    msg('Season finished (120 days). Opening report.');
+    openReport(false);
+    return;
+  }
+  stepDay();
+  autoSprayCooldown--;
+  updateStats();
+  if (day >= HARVEST.SEASON) {
+    msg(farmHasBorers()
+      ? 'Season finished (120 days). Opening report.'
+      : 'Season finished (120 days) — no borers were added, reporting harvest only.');
+    openReport(false);
+  }
+});
+document.getElementById('runBtn').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (guardRun()) startRun('plain');
+});
+document.getElementById('runLureBtn').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (guardRun()) startRun('lure');
+});
+document.getElementById('runSprayBtn').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (guardRun()) startRun('spray');
+});
+document.getElementById('runCombBtn').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (guardRun()) startRun('combine');
+});
+document.getElementById('reportBtn').addEventListener('click', () => openReport(false));
+document.getElementById('reportClose').addEventListener('click', () =>
+  document.getElementById('reportModal').classList.remove('show'));
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (running) stopRun();
+  runMode = 'plain';
+  for (const p of plants) { p.cell.worms = []; p.cell.spray = 0; p.cell.lure = false; }
+  history = [];
+  sprayEvents = [];
+  lureEvents = [];
+  sanitationEvents = [];
+  clearFieldAnim();
+  autoSprayCooldown = 0;
+  underControlDays = 0;
+  harvestCount = 0;
+  day = 1;
+  render();
+  renderDay();
+  renderWeather();
+  msg('Farm reset.');
+  refreshRunButtons();
+});
+document.getElementById('seedBtn').addEventListener('click', () => {
+  if (running) stopRun();
+  seedFarm(parseInt(seedSlider.value));
+});
+
+// Load a user-authored farm layout: any cell containing "plant" becomes eggplant,
+// everything else is a path. Grid size follows the CSV, so users can model their own farm.
+document.getElementById('loadFarmBtn').addEventListener('click', () => document.getElementById('farmFile').click());
+document.getElementById('farmFile').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try {
+    const p = parseCSV(await file.text());
+    const nonEmpty = p.filter(row => row.some(v => v));
+    if (!nonEmpty.length) { msg('That CSV had no rows — expected one row of plant/path cells per line.'); e.target.value = ''; return; }
+    if (running) stopRun();
+    rows = nonEmpty;
+    initGrid();
+    msg(`Loaded farm layout: ${rows.length}×${Math.max(...rows.map(r => r.length))} (${plants.length} plants). Seed Farm, then choose a run mode.`);
+  } catch (err) {
+    msg('Could not read that CSV.');
+  }
+  e.target.value = '';
+});
+
+function seedFarm(n) {
+  if (!plants.length) return;
+  const p = plants[Math.floor(Math.random() * plants.length)];
+  p.cell.worms = [];
+  p.cell.worms.push({ stage: 'adult', progress: 0, age: 1, sex: 'f' });
+  let added = 1;
+  if (n >= 4 && added < n) { p.cell.worms.push({ stage: 'pupa', progress: 6, age: 0 }); added++; }
+  let mature = true;
+  while (added < n) {
+    p.cell.worms.push({ stage: 'larva', progress: mature ? 9 : 3 });
+    mature = false;
+    added++;
+  }
+  history = [];
+  recordHistory();
+  msg(`Seeded ${n} borers (gravid moth + larvae + pupa) on one plant. Choose a run mode.`);
+  render();
+  refreshRunButtons();
+}
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    clickMode = btn.dataset.mode;
+    if (clickMode === 'spray') msg('Farmer Spray: click any plant to spray the WHOLE farm today (farmer covers all plants in one day).');
+    else if (clickMode === 'lure') msg('Lure tool: click plants to place / remove pheromone traps.');
+  });
+});
+
+document.querySelectorAll('[data-target]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const slider = document.getElementById(btn.dataset.target);
+    if (!slider) return;
+    const step = parseFloat(btn.dataset.step || '1');
+    const min = parseFloat(slider.min), max = parseFloat(slider.max);
+    let v = parseFloat(slider.value) + (btn.dataset.dir > 0 ? step : -step);
+    v = Math.max(min, Math.min(max, v));
+    slider.value = v;
+    slider.dispatchEvent(new Event('input'));
+  });
+});
+
+speedSlider.addEventListener('input', () => {
+  speedVal.textContent = '×' + (parseInt(speedSlider.value) / 100).toFixed(2);
+  // apply the new pace immediately if a run is in progress
+  if (running) { clearInterval(animTimer); animTimer = setInterval(runStep, tickDelay()); }
+});
+seedSlider.addEventListener('input', () => seedVal.textContent = seedSlider.value);
+
+initGrid();
+loadData();
+</script>
+</body>
+</html>
