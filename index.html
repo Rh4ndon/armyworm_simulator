@@ -142,6 +142,8 @@ button:active { transform: scale(0.95); }
 .slider-row input[type="range"] { flex: 1; }
 .slider-row .val { color: #ffca28; font-weight: 700; min-width: 34px; text-align: center; }
 .btn-sm { width: 22px; height: 22px; padding: 0; border-radius: 4px; background: #3f5058; color: #ccc; border: 1px solid #5a6a62; font-size: 0.9rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.minichk { font-size: 0.74rem; color: #b0c0b8; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.hint { font-size: 0.66rem; color: #7f9789; line-height: 1.35; }
 
 .weather-line, .msg-line { font-size: 0.78rem; color: #b9d4c2; background: #1b2a30; padding: 6px 10px; border-radius: 6px; border: 1px solid #3d5a40; }
 .weather-line b { color: #ffca28; }
@@ -219,7 +221,7 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
     <div class="panel">
       <div class="btn-row">
         <button class="btn-day" id="dayBtn">+1 Day</button>
-        <button class="btn-run" id="runBtn" title="No control - runs until borers are under control">Run Daily</button>
+        <button class="btn-run" id="runBtn" title="No control - runs until borers are out of control (~80%) or the season ends">Run Daily</button>
         <button class="btn-lure" id="runLureBtn" title="Runs with pheromone lures until harvest">Run + Pheromone</button>
         <button class="btn-spray" id="runSprayBtn" title="Runs with auto pesticide application until harvest">Run + Spray</button>
         <button class="btn-combine" id="runCombBtn" title="Runs with pheromone lures AND threshold spraying together (IPM) until harvest">Run + Lure &amp; Spray</button>
@@ -262,6 +264,33 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
         <span class="val" id="seedVal">4</span>
       </div>
 
+      <div class="slider-row">
+        <label for="manualWeather">Weather</label>
+        <label class="minichk"><input type="checkbox" id="manualWeather"> Manual (+1 Day)</label>
+        <span class="val" id="weatherModeHint" style="min-width:auto;font-size:0.68rem;color:#9fb59a">auto (climate record)</span>
+      </div>
+      <div id="weatherCtl" style="display:none">
+        <div class="slider-row">
+          <label>Temp (°C)</label>
+          <button class="btn-sm" data-target="tempSlider" data-dir="-1" data-step="0.5">−</button>
+          <input type="range" id="tempSlider" min="15" max="40" step="0.5" value="28.5">
+          <button class="btn-sm" data-target="tempSlider" data-dir="1" data-step="0.5">+</button>
+          <span class="val" id="tempVal">28.5</span>
+        </div>
+        <div class="slider-row">
+          <label>Humidity (%)</label>
+          <button class="btn-sm" data-target="humSlider" data-dir="-1" data-step="1">−</button>
+          <input type="range" id="humSlider" min="30" max="100" step="1" value="80">
+          <button class="btn-sm" data-target="humSlider" data-dir="1" data-step="1">+</button>
+          <span class="val" id="humVal">80%</span>
+        </div>
+        <div class="slider-row">
+          <label>Conditions</label>
+          <label class="minichk"><input type="checkbox" id="rainChk"> Rainy 🌧</label>
+          <span class="hint">T&nbsp;≥&nbsp;33 / &lt;&nbsp;20 and RH&nbsp;&lt;&nbsp;60 / &lt;&nbsp;50 raise worm mortality (research)</span>
+        </div>
+      </div>
+
       <hr>
 
       <div class="bar-wrap">
@@ -273,11 +302,11 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
 
       <div class="info-box">
         <strong>4 run modes</strong> <em>(add borers first — press <b>Seed Farm</b> or use the Infest tool, or these buttons won't run)</em><strong>:</strong>
-        <br>▸ <strong>Run Daily</strong> — no control; keeps going until borers are <em>under control</em> (&le;2% for 3 days).
+        <br>▸ <strong>Run Daily</strong> — no control; keeps going until the pest is <em>out of control</em> (&ge;80% infestation) or the season ends.
         <br>▸ <strong>Run + Pheromone 🪤</strong> — auto-places sex-pheromone traps (catch male moths, disrupt mating), runs until <strong>harvest</strong>.
         <br>▸ <strong>Run + Spray 💧</strong> — farmer auto-sprays the <strong>whole plot in one day</strong> when &ge;5% threshold, repeats every ~7 days, until <strong>harvest</strong>.
         <br>▸ <strong>Run + Lure &amp; Spray 🪤💧</strong> — <strong>combined IPM</strong>: pheromone traps <em>and</em> whole-farm threshold sprays (every ~10 days, fewer sprays) <em>and</em> weekly hand-removal of damaged shoots/fruit, until <strong>harvest</strong>. The three together beat either alone.<br><br>
-        <strong>Harvest </strong>🍆 starts <strong>46&ndash;50 days after transplanting</strong>, picking every 3&ndash;4 days (~2&times;/week) over a ~120-day profitable season (PH DA + Bt-eggplant trials). <em>All run modes except Run Daily simulate until the season ends; manual <b>+1 Day</b> is capped at 120 days, then the report opens.</em><br><br>
+        <strong>Harvest </strong>🍆 starts <strong>46&ndash;50 days after transplanting</strong>, picking every 3&ndash;4 days (~2&times;/week) over a ~120-day profitable season (PH DA + Bt-eggplant trials). <em>All run modes simulate until the pest is out of control (&ge;80%), goes extinct, or the season ends; manual <b>+1 Day</b> is capped at 120 days, then the report opens.</em><br><br>
         <strong>Farm layout (.csv):</strong> the field comes from <b>farm.csv</b> &mdash; one comma-separated row per line; a cell containing <b>plant</b> is an eggplant, anything else (e.g. <b>farm path</b>) is a walkway. Edit <b>farm.csv</b> and refresh, or use <b>Load Farm (.csv)</b> to try your own field &mdash; the grid resizes to the file.<br><br>
         <strong>Sim Speed ×:</strong> only changes how fast the days tick (a viewing pace) &mdash; it does <em>not</em> change pest biology or the outcome. Use it to watch a run faster or slower.<br><br>
         <strong>Spray 💧:</strong> one spray day covers <strong>every plant on the plot</strong> (a farmer sprays the whole field in a day). Kills exposed eggs/larvae, ~5-day residue. Larvae are only vulnerable a few hours after hatching (evening sprays work best).<br><br>
@@ -333,8 +362,6 @@ function makeFallbackFarm() {
 const FALLBACK_ENV = { T: 28.5, H: 80, weather: 'Cloudy', rainy: false };
 const MAX_INFEST_PCT = 80;                       // "out of control" infestation level
 const MAX_BORERS = 2500;                         // hard safety cap (uncontrolled peak ~3000)
-const CONTROL_THRESHOLD = 2;                     // % to call it "under control"
-const CONTROL_DAYS_REQ = 3;
 const SPRAY_THRESHOLD = 5;                       // action threshold (%) -> spray
 const SPRAY_REPEAT = 7;                          // days between auto sprays
 
@@ -349,11 +376,20 @@ const totalEl = document.getElementById('totalCount');
 const dayEl = document.getElementById('dayCount');
 const weatherLine = document.getElementById('weatherLine');
 const msgLine = document.getElementById('msgLine');
+const manualWeatherEl = document.getElementById('manualWeather');
+const weatherCtlEl = document.getElementById('weatherCtl');
+const weatherModeHintEl = document.getElementById('weatherModeHint');
+const tempSlider = document.getElementById('tempSlider');
+const humSlider = document.getElementById('humSlider');
+const tempVal = document.getElementById('tempVal');
+const humVal = document.getElementById('humVal');
+const rainChk = document.getElementById('rainChk');
 
 let SIZE_R, SIZE_C;
 let grid = [];
 let cells = [];
 let rows = makeFallbackFarm();
+let manualWeather = false;  // user controls temp/humidity/rain for manual +1 Day steps
 let running = false;
 let runMode = 'plain';            // 'plain' | 'spray' | 'lure' | 'combine'
 let day = 1;
@@ -368,7 +404,6 @@ let sanitationEvents = [];        // hand-removal of infested shoots/fruit (comb
 let farmers = {};                 // plant index -> active farmer
 let fieldAnimTimers = [];         // timers for the field-wide spray/harvest sweep
 let autoSprayCooldown = 0;
-let underControlDays = 0;
 let harvestCount = 0;             // fruits (units) harvested
 
 /* ---------- biology parameters (mirrors generate_data.py) ---------- */
@@ -471,7 +506,19 @@ function parseDailyEnv(csvRows) {
   return arr;
 }
 
+function manualEnv() {
+  return {
+    T: parseFloat(tempSlider.value) || FALLBACK_ENV.T,
+    H: Math.round(parseFloat(humSlider.value)) || FALLBACK_ENV.H,
+    weather: rainChk.checked ? 'Rainy' : 'Manual',
+    rainy: rainChk.checked
+  };
+}
+
 function dayEnv() {
+  // Manual weather only applies to manual "+1 Day" steps (no run active).
+  // Runs always use the research-based climate record so outcomes stay comparable.
+  if (manualWeather && !running) return manualEnv();
   return dailyEnv[Math.min(day, dailyEnv.length) - 1] || FALLBACK_ENV;
 }
 
@@ -515,7 +562,6 @@ function initGrid() {
   sanitationEvents = [];
   clearFieldAnim();
   autoSprayCooldown = 0;
-  underControlDays = 0;
   harvestCount = 0;
   day = 1;
   if (running) stopRun();
@@ -627,7 +673,8 @@ function renderDay() { dayEl.textContent = 'Day ' + day; }
 function renderWeather() {
   const e = dayEnv();
   const icon = e.rainy ? '🌧' : /Sunny/.test(e.weather) ? '☀' : /Clear/.test(e.weather) ? '🌤' : '☁';
-  weatherLine.textContent = 'Weather: ' + icon + ' ' + e.T.toFixed(1) + '°C · ' + e.H + '% RH · ' + e.weather + ' | Day ' + day;
+  const tag = (manualWeather && !running) ? '✋ ' : '';
+  weatherLine.textContent = 'Weather: ' + tag + icon + ' ' + e.T.toFixed(1) + '°C · ' + e.H + '% RH · ' + e.weather + ' | Day ' + day;
 }
 
 /* ---------- tools ---------- */
@@ -990,7 +1037,6 @@ function stopRun() { if (running) resetRunUI(); }
 function startRun(mode) {
   runMode = mode;
   autoSprayCooldown = 0;
-  underControlDays = 0;
   if (runMode === 'lure' || runMode === 'combine') placeAutoLures();
   running = true;
   refreshRunButtons();
@@ -1002,7 +1048,7 @@ function startRun(mode) {
   const btn = document.getElementById(id);
   btn.textContent = '▶ ' + txt;
   btn.className = cls + ' active';
-  msg(runMode === 'plain' ? 'No control — running until borers are under control.' :
+  msg(runMode === 'plain' ? 'No control — running until the pest is out of control or the season ends.' :
       runMode === 'lure' ? 'Pheromone-lure run — traps catch male moths; simulating to harvest.' :
       runMode === 'combine' ? 'Combined IPM run — pheromone traps + whole-farm threshold sprays (every ~10 days); simulating to harvest.' :
                               'Pesticide run — farmer sprays the whole plot in a day at ≥5% threshold; simulating to harvest.');
@@ -1030,18 +1076,12 @@ function runStep() {
     stopRun(); msg('Infestation out of control — opening report.'); openReport(true); return;
   }
 
-  if (runMode === 'plain') {
-    // plain run: keep going until under control
-    if (s.pct <= CONTROL_THRESHOLD) underControlDays++;
-    else underControlDays = 0;
-    if (underControlDays >= CONTROL_DAYS_REQ) {
-      stopRun(); msg('Borer population is under control (≤2% for 3 days). Opening report.'); openReport(true); return;
-    }
-  } else {
-    // lure / spray runs: go until harvest season ends
-    if (day >= HARVEST.SEASON) {
-      stopRun(); msg('Harvest season finished (≈120 days). Opening report.'); openReport(true); return;
-    }
+  // all run modes go until out of control, no borers, or harvest season ends
+  if (day >= HARVEST.SEASON) {
+    stopRun(); msg('Harvest season finished (≈120 days). Opening report.'); openReport(true); return;
+  }
+
+  if (runMode !== 'plain') {
     // auto pesticide application (whole plot in one day)
     if ((runMode === 'spray' || runMode === 'combine') && autoSprayCooldown <= 0 && s.pct >= SPRAY_THRESHOLD) {
       // combined IPM sprays less often (research: ~10-day interval)
@@ -1337,7 +1377,6 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   sanitationEvents = [];
   clearFieldAnim();
   autoSprayCooldown = 0;
-  underControlDays = 0;
   harvestCount = 0;
   day = 1;
   render();
@@ -1419,6 +1458,31 @@ speedSlider.addEventListener('input', () => {
   // apply the new pace immediately if a run is in progress
   if (running) { clearInterval(animTimer); animTimer = setInterval(runStep, tickDelay()); }
 });
+
+function updateWeatherLabels() {
+  tempVal.textContent = parseFloat(tempSlider.value).toFixed(1);
+  humVal.textContent = humSlider.value + '%';
+  renderWeather();
+}
+
+function startManualWeather() {
+  const e = dailyEnv[Math.min(day, dailyEnv.length) - 1] || FALLBACK_ENV;
+  tempSlider.value = e.T;
+  humSlider.value = e.H;
+  rainChk.checked = e.rainy;
+  weatherModeHintEl.textContent = 'manual - used by +1 Day';
+  weatherCtlEl.style.display = '';
+  updateWeatherLabels();
+}
+
+manualWeatherEl.addEventListener('change', () => {
+  manualWeather = manualWeatherEl.checked;
+  if (manualWeather) startManualWeather();
+  else { weatherModeHintEl.textContent = 'auto (climate record)'; weatherCtlEl.style.display = 'none'; renderWeather(); }
+});
+tempSlider.addEventListener('input', updateWeatherLabels);
+humSlider.addEventListener('input', updateWeatherLabels);
+rainChk.addEventListener('change', renderWeather);
 seedSlider.addEventListener('input', () => seedVal.textContent = seedSlider.value);
 
 initGrid();
