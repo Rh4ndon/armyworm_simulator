@@ -658,6 +658,7 @@ function initGrid() {
       gridEl.appendChild(el);
     }
   }
+  recordHistory();
   render();
   renderDay();
   renderWeather();
@@ -927,7 +928,7 @@ function stepDay() {
   // CSV scenario: apply this day's starting infestation and listed treatments.
   if (runMode === 'scenario' && scenario) {
     if (!scenario.seeded && scenario.infest && day === scenario.infest.day) {
-      seedFarm(scenario.infest.n);
+      seedFarm(scenario.infest.n, true);
       scenario.seeded = true;
     }
     if (scenario.treatments[day] === 'Spray') applySpray(false, scenario.interval || SPRAY_REPEAT);
@@ -1547,7 +1548,7 @@ document.getElementById('scenarioFile').addEventListener('change', async (e) => 
   e.target.value = '';
 });
 
-function seedFarm(n) {
+function seedFarm(n, keepHistory) {
   if (!plants.length) return;
   const p = plants[Math.floor(Math.random() * plants.length)];
   p.cell.worms = [];
@@ -1560,7 +1561,10 @@ function seedFarm(n) {
     mature = false;
     added++;
   }
-  history = [];
+  // keepHistory: used by CSV scenarios, whose pre-infestation days are already recorded.
+  // Replace the row for the current day so a day never appears twice in the report.
+  if (keepHistory) history = history.filter(r => r.day !== day);
+  else history = [];
   recordHistory();
   msg(`Seeded ${n} borers (gravid moth + larvae + pupa) on one plant. Choose a run mode.`);
   render();
