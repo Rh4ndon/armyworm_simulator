@@ -128,7 +128,10 @@ button:active { transform: scale(0.95); }
 .btn-reset { background: linear-gradient(135deg, #78909c, #455a5a); color: #fff; }
 .btn-seed { background: linear-gradient(135deg, #ff9800, #e65100); color: #fff; }
 .btn-report { background: linear-gradient(135deg, #ab47bc, #6a1b9a); color: #fff; }
-.btn-run.needs-seed, .btn-lure.needs-seed, .btn-spray.needs-seed, .btn-combine.needs-seed {
+.btn-scenario { background: linear-gradient(135deg, #26a69a, #00695c); color: #fff; }
+.btn-scenario.active { outline: 3px solid #80cbc4; }
+.btn-run.needs-seed, .btn-lure.needs-seed, .btn-spray.needs-seed, .btn-combine.needs-seed,
+.btn-scenario.needs-seed {
   filter: grayscale(0.75) brightness(0.65); cursor: not-allowed;
 }
 
@@ -225,6 +228,7 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
         <button class="btn-lure" id="runLureBtn" title="Runs with pheromone lures until harvest">Run + Pheromone</button>
         <button class="btn-spray" id="runSprayBtn" title="Runs with auto pesticide application until harvest">Run + Spray</button>
         <button class="btn-combine" id="runCombBtn" title="Runs with pheromone lures AND threshold spraying together (IPM) until harvest">Run + Lure &amp; Spray</button>
+        <button class="btn-scenario" id="runScenarioBtn" title="Runs a loaded CSV scenario — its weather, treatments & infestation schedule">Run Scenario</button>
       </div>
       <div class="btn-row">
         <button class="btn-seed" id="seedBtn">Seed Farm</button>
@@ -233,6 +237,8 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
         <button class="btn-report" id="sourcesBtn" title="Research sources and model notes">📚 Sources</button>
         <button class="btn-seed" id="loadFarmBtn" title="Load a farm layout CSV — cells with 'plant' become eggplant, anything else is a path">Load Farm (.csv)</button>
         <input type="file" id="farmFile" accept=".csv,text/csv" style="display:none">
+        <button class="btn-scenario" id="loadScenarioBtn" title="Load a scenario CSV — Day,Infestation,Weather,Temp,Humidity,Treatment per day">Load Scenario (.csv)</button>
+        <input type="file" id="scenarioFile" accept=".csv,text/csv" style="display:none">
       </div>
 
       <div class="weather-line" id="weatherLine">Weather: --</div>
@@ -308,6 +314,7 @@ hr { border: none; border-top: 1px solid #3d5a40; margin: 4px 0; }
         <br>▸ <strong>Run + Lure &amp; Spray 🪤💧</strong> — <strong>combined IPM</strong>: pheromone traps <em>and</em> whole-farm threshold sprays (every ~10 days, fewer sprays) <em>and</em> weekly hand-removal of damaged shoots/fruit, until <strong>harvest</strong>. The three together beat either alone.<br><br>
         <strong>Harvest </strong>🍆 starts <strong>46&ndash;50 days after transplanting</strong>, picking every 3&ndash;4 days (~2&times;/week) over a ~120-day profitable season (PH DA + Bt-eggplant trials). <em>All run modes simulate until the pest is out of control (&ge;80%), goes extinct, or the season ends; manual <b>+1 Day</b> is capped at 120 days, then the report opens.</em><br><br>
         <strong>Farm layout (.csv):</strong> the field comes from <b>farm.csv</b> &mdash; one comma-separated row per line; a cell containing <b>plant</b> is an eggplant, anything else (e.g. <b>farm path</b>) is a walkway. Edit <b>farm.csv</b> and refresh, or use <b>Load Farm (.csv)</b> to try your own field &mdash; the grid resizes to the file.<br><br>
+        <strong>Scenario (.csv):</strong> <b>Load Scenario (.csv)</b> plays a real day-by-day record &mdash; columns <b>Day, Infestation, Weather, Temperature (°C), Humidity (%), Treatment</b>. Your temperature/humidity/rain drive the biology each day; <b>Treatment</b> values <em>Spray</em> or <em>Lure</em> are applied on exactly that day (add <em>Interval=7</em> as a trailing row to set the re-spray note) and an <b>Infestation</b> cell like <b>20,4 Worms Started</b> starts the outbreak on that day. Then press <b>&#9654; Run Scenario</b>.<br><br>
         <strong>Sim Speed ×:</strong> only changes how fast the days tick (a viewing pace) &mdash; it does <em>not</em> change pest biology or the outcome. Use it to watch a run faster or slower.<br><br>
         <strong>Spray 💧:</strong> one spray day covers <strong>every plant on the plot</strong> (a farmer sprays the whole field in a day). Kills exposed eggs/larvae, ~5-day residue. Larvae are only vulnerable a few hours after hatching (evening sprays work best).<br><br>
         <strong>Lure 🪤:</strong> water-trap with a <strong>4 mg pheromone lure ~1 m high</strong> attracts <em>male moths</em> (mass trapping) to suppress mating.<br><br>
@@ -390,6 +397,7 @@ let grid = [];
 let cells = [];
 let rows = makeFallbackFarm();
 let manualWeather = false;  // user controls temp/humidity/rain for manual +1 Day steps
+let scenario = null;        // custom CSV scenario: { envs, treatments, infest, maxDay, interval }
 let running = false;
 let runMode = 'plain';            // 'plain' | 'spray' | 'lure' | 'combine'
 let day = 1;
@@ -516,10 +524,67 @@ function manualEnv() {
 }
 
 function dayEnv() {
+  // A loaded scenario supplies the daily weather for every one of its days.
+  if (scenario && scenario.envs[day]) return scenario.envs[day];
   // Manual weather only applies to manual "+1 Day" steps (no run active).
   // Runs always use the research-based climate record so outcomes stay comparable.
   if (manualWeather && !running) return manualEnv();
   return dailyEnv[Math.min(day, dailyEnv.length) - 1] || FALLBACK_ENV;
+}
+
+/* ---------- custom CSV scenario (weather + treatments + starting infestation) ---------- */
+// Scenario CSV columns:  Day, Infestation, Weather, Temperature (°C), Humidity (%), Treatment
+//   e.g. "20,4 Worms Started,Sunny,31°C,75%,None" and a trailing ",,,,,Interval=7"
+function parseScenario(text) {
+  const rowsP = parseCSV(text).filter(r => r.some(v => (v + '').trim() !== ''));
+  const s = { envs: [], treatments: {}, infest: null, maxDay: 0, interval: SPRAY_REPEAT, hasSpray: false, hasLure: false };
+  for (let i = 0; i < rowsP.length; i++) {
+    const cols = rowsP[i];
+    if (!cols.length) continue;
+    const meta = (cols[cols.length - 1] + '').trim();
+    if (/Interval\s*=/i.test(meta)) {
+      const m = meta.match(/Interval\s*=\s*(\d+)/i);
+      if (m) s.interval = parseInt(m[1]);
+      continue;
+    }
+    const d = parseInt(cols[0]);
+    if (isNaN(d)) continue;
+    const infCell = (cols[1] + '').trim();
+    if (infCell) {
+      const wm = infCell.match(/(\d+)\s*worms?/i);
+      if (!s.infest || d < s.infest.day) s.infest = { day: d, n: wm ? parseInt(wm[1]) : 4 };
+    }
+    const T = parseFloat((cols[3] + '').replace(/[^\d.]/g, ''));
+    const H = parseFloat((cols[4] + '').replace(/[^\d.]/g, ''));
+    if (isNaN(T) || isNaN(H)) continue;
+    const weather = (cols[2] + '').trim();
+    s.envs[d] = { T, H, weather: weather || 'Cloudy', rainy: /Rainy/i.test(weather) };
+    const trt = (cols[5] + '').trim();
+    if (/spray/i.test(trt)) { s.treatments[d] = 'Spray'; s.hasSpray = true; }
+    else if (/lure/i.test(trt)) { s.treatments[d] = 'Lure'; s.hasLure = true; }
+    if (d > s.maxDay) s.maxDay = d;
+  }
+  let last = null;
+  for (let d = 1; d <= s.maxDay; d++) {
+    if (s.envs[d]) last = s.envs[d];
+    else if (last) s.envs[d] = last;
+  }
+  return s;
+}
+
+function loadScenario(text) {
+  const s = parseScenario(text);
+  if (s.maxDay < 1) { msg('That scenario CSV had no readable day rows (need: Day,Infestation,Weather,Temperature,Humidity,Treatment).'); return false; }
+  scenario = s;
+  scenario.seeded = false;
+  manualWeatherEl.checked = false; manualWeather = false; manualWeatherEl.disabled = true;
+  weatherCtlEl.style.display = 'none';
+  weatherModeHintEl.textContent = 'scenario CSV';
+  if (running) stopRun();
+  initGrid();
+  msg(`Scenario loaded: ${s.maxDay} days · ${s.infest ? (s.infest.n + ' worms on day ' + s.infest.day) : 'no starting infestation'} · spray interval ${s.interval} d. Press ▶ Run Scenario.`);
+  refreshRunButtons();
+  return true;
 }
 
 async function loadData() {
@@ -759,7 +824,7 @@ function applySpray(manual, cooldown) {
   sprayEvents.push({ day, count, killed, manual });
   animateFieldAction('spray');
   const wait = cooldown || SPRAY_REPEAT;
-  const how = manual ? 'You sprayed' : 'Farmer auto-sprayed';
+  const how = manual ? 'You sprayed' : (scenario ? 'Scenario list spray' : 'Farmer auto-sprayed');
   msg(`${how} the whole farm (${count} plants) in one day — killed ${killed.egg} eggs, ${killed.larva} larvae. Re-spray in ${wait}–${wait + 3} days.`);
   autoSprayCooldown = wait;
   render();
@@ -859,9 +924,20 @@ function stepDay() {
   const g = growth(T);
   const flights = [];
 
+  // CSV scenario: apply this day's starting infestation and listed treatments.
+  if (runMode === 'scenario' && scenario) {
+    if (!scenario.seeded && scenario.infest && day === scenario.infest.day) {
+      seedFarm(scenario.infest.n);
+      scenario.seeded = true;
+    }
+    if (scenario.treatments[day] === 'Spray') applySpray(false, scenario.interval || SPRAY_REPEAT);
+    else if (scenario.treatments[day] === 'Lure' && !plants.some(p => p.cell.lure)) placeAutoLures();
+  }
+
   // pheromone mass-trapping: lure draws males from across the small plot,
   // with a much higher nightly catch close to a trap
-  if (runMode === 'lure' || runMode === 'combine') {
+  const luresActive = runMode === 'lure' || runMode === 'combine' || plants.some(p => p.cell.lure);
+  if (luresActive) {
     for (const p of plants) {
       const worms = p.cell.worms;
       const near = lureNear(p);
@@ -1011,6 +1087,7 @@ function refreshRunButtons() {
   const locked = !running && !farmHasBorers();
   for (const id of ['runBtn', 'runLureBtn', 'runSprayBtn', 'runCombBtn'])
     document.getElementById(id).classList.toggle('needs-seed', locked);
+  document.getElementById('runScenarioBtn').classList.toggle('needs-seed', !scenario);
 }
 function guardRun() {
   if (farmHasBorers()) return true;
@@ -1028,6 +1105,8 @@ function resetRunUI() {
   document.getElementById('runSprayBtn').className = 'btn-spray';
   document.getElementById('runCombBtn').textContent = 'Run + Lure & Spray';
   document.getElementById('runCombBtn').className = 'btn-combine';
+  document.getElementById('runScenarioBtn').textContent = 'Run Scenario';
+  document.getElementById('runScenarioBtn').className = 'btn-scenario';
   if (animTimer) { clearInterval(animTimer); animTimer = null; }
   refreshRunButtons();
 }
@@ -1043,12 +1122,14 @@ function startRun(mode) {
   const labelMap = { plain: ['Pause', 'btn-run', 'runBtn'],
                      lure: ['Pause (Phero)', 'btn-lure', 'runLureBtn'],
                      spray: ['Pause (Spray)', 'btn-spray', 'runSprayBtn'],
-                     combine: ['Pause (Lure+Spray)', 'btn-combine', 'runCombBtn'] };
+                     combine: ['Pause (Lure+Spray)', 'btn-combine', 'runCombBtn'],
+                     scenario: ['Pause (Scenario)', 'btn-scenario', 'runScenarioBtn'] };
   const [txt, cls, id] = labelMap[mode];
   const btn = document.getElementById(id);
   btn.textContent = '▶ ' + txt;
   btn.className = cls + ' active';
   msg(runMode === 'plain' ? 'No control — running until the pest is out of control or the season ends.' :
+      runMode === 'scenario' ? 'Scenario run — weather & treatments follow your CSV.' :
       runMode === 'lure' ? 'Pheromone-lure run — traps catch male moths; simulating to harvest.' :
       runMode === 'combine' ? 'Combined IPM run — pheromone traps + whole-farm threshold sprays (every ~10 days); simulating to harvest.' :
                               'Pesticide run — farmer sprays the whole plot in a day at ≥5% threshold; simulating to harvest.');
@@ -1066,6 +1147,17 @@ function runStep() {
   stepDay();
   const s = updateStats();
 
+  // CSV scenario: replays all of its recorded days. Wait for its starting
+// infestation (the step that STARTS on that day seeds before any stop check),
+// then run through to the scenario's last day with no early stops.
+  if (runMode === 'scenario' && scenario && scenario.infest) {
+    if (!scenario.seeded && day <= scenario.infest.day) return;
+    if (day >= (scenario.maxDay || HARVEST.SEASON)) {
+      stopRun(); msg('Scenario finished — opening report.'); openReport(true); return;
+    }
+    return;
+  }
+
   // no borers
   let any = false;
   for (const p of plants) if (p.cell.worms.length) { any = true; break; }
@@ -1081,7 +1173,7 @@ function runStep() {
     stopRun(); msg('Harvest season finished (≈120 days). Opening report.'); openReport(true); return;
   }
 
-  if (runMode !== 'plain') {
+  if (runMode !== 'plain' && runMode !== 'scenario') {
     // auto pesticide application (whole plot in one day)
     if ((runMode === 'spray' || runMode === 'combine') && autoSprayCooldown <= 0 && s.pct >= SPRAY_THRESHOLD) {
       // combined IPM sprays less often (research: ~10-day interval)
@@ -1100,6 +1192,25 @@ function infestedPctNow() {
   return plants.length ? i / plants.length * 100 : 0;
 }
 
+function computeSpread() {
+  const rows = history;
+  let rate = 0, maxJump = 0, jumpDay = '—', firstDay = null;
+  const firstB = rows.find(r => r.borers > 0);
+  const last = rows[rows.length - 1];
+  if (firstB && last && last.borers > 0) {
+    firstDay = firstB.day;
+    const span = Math.max(1, last.day - firstB.day);
+    rate = Math.max(0, (last.infested - firstB.infested) / span);
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].borers > 0) {
+        const jump = rows[i].infested - rows[i - 1].infested;
+        if (jump > maxJump) { maxJump = jump; jumpDay = rows[i].day; }
+      }
+    }
+  }
+  return { rate, maxJump, jumpDay, firstDay };
+}
+
 function buildReport() {
   if (!history.length) recordHistory();
   const rows = history;
@@ -1109,7 +1220,14 @@ function buildReport() {
   const everHadBorers = rows.some(r => r.borers > 0);
   const maxRow = rows.reduce((a, b) => b.pct > a.pct ? b : a, rows[0] || { pct: 0, day: 0 });
   const level = last.pct >= 20 ? 3 : last.pct >= 5 ? 2 : last.pct > 0 ? 1 : 0;
-  const strategy = runMode === 'plain' ? 'No control' : runMode === 'lure' ? 'Pheromone lure' : runMode === 'combine' ? 'Pheromone + spray (combined IPM)' : 'Pesticide spray';
+  const strategy =
+    runMode === 'scenario' && scenario
+      ? (scenario.hasSpray && scenario.hasLure ? 'CSV scenario — lure + spray schedule'
+         : scenario.hasSpray ? 'CSV scenario — spray schedule'
+         : scenario.hasLure ? 'CSV scenario — lure schedule'
+         : 'CSV scenario — no control')
+      : runMode === 'plain' ? 'No control' : runMode === 'lure' ? 'Pheromone lure' : runMode === 'combine' ? 'Pheromone + spray (combined IPM)' : 'Pesticide spray';
+  const spread = computeSpread();
 
   const today = dayEnv();
   let bars = '<div class="rate-bars">';
@@ -1128,6 +1246,7 @@ function buildReport() {
       <div><b>Plants:</b> ${plants.length}</div>
       <div><b>Days:</b> ${rows.length}</div>
       <div><b>Peak infestation:</b> ${maxRow.pct}% (Day ${maxRow.day})</div>
+      <div><b>Rate of spread:</b> +${spread.rate.toFixed(1)} new plants/day${spread.maxJump > 0 ? ` (fastest +${spread.maxJump} in one day, Day ${spread.jumpDay})` : ''}</div>
       <div><b>Final:</b> ${last.pct}% · ${last.borers} borers</div>
       <div><b>Sprays:</b> ${sprayEvents.length}</div>
       <div><b>Lures:</b> ${plants.filter(p => p.cell.lure).length} traps</div>
@@ -1161,10 +1280,11 @@ function buildReport() {
   }
 
   let events = '<ul class="rec-list">';
-  if ((runMode === 'spray' || runMode === 'combine') && sprayEvents.length) {
-    sprayEvents.forEach(ev => events += `<li>Day ${ev.day}: ${ev.manual ? 'manual' : 'auto'} spray — whole farm (${ev.count} plants) — removed ${ev.killed.egg} eggs + ${ev.killed.larva} larvae.</li>`);
+  const withScenario = runMode === 'scenario';
+  if ((runMode === 'spray' || runMode === 'combine' || withScenario) && sprayEvents.length) {
+    sprayEvents.forEach(ev => events += `<li>Day ${ev.day}: ${ev.manual ? 'manual' : withScenario ? 'scenario' : 'auto'} spray — whole farm (${ev.count} plants) — removed ${ev.killed.egg} eggs + ${ev.killed.larva} larvae.</li>`);
   }
-  if ((runMode === 'lure' || runMode === 'combine') && lureEvents.length) {
+  if ((runMode === 'lure' || runMode === 'combine' || withScenario) && lureEvents.length) {
     lureEvents.forEach(ev => events += `<li>Day ${ev.day}: trap placed at ${ev.at}.</li>`);
     events += `<li><b>${plants.filter(p => p.cell.lure).length}</b> water traps active (4 mg lure / rubber septum / ~1 m).</li>`;
   }
@@ -1217,7 +1337,7 @@ function buildReport() {
     ${summary}
     <h4>Infestation rate over time ${levelTag}</h4>
     ${bars}
-    <div class="expl">Infested plants ÷ total plants, per simulated day.</div>
+    <div class="expl">Infested plants ÷ total plants, per simulated day.${scenario ? ` Weather &amp; treatments from your scenario CSV (days 1–${scenario.maxDay}, starting infestation ${scenario.infest ? `day ${scenario.infest.day}` : '—'}).` : ''}</div>
     <h4>Recommendations (this run: ${strategy})</h4>
     <ul class="rec-list">${adv}</ul>
     <h4>Interventions applied</h4>
@@ -1364,6 +1484,11 @@ document.getElementById('runCombBtn').addEventListener('click', () => {
   if (running) { stopRun(); return; }
   if (guardRun()) startRun('combine');
 });
+document.getElementById('runScenarioBtn').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (!scenario) { msg('Load a scenario CSV first (Load Scenario button).'); return; }
+  startRun('scenario');
+});
 document.getElementById('reportBtn').addEventListener('click', () => openReport(false));
 document.getElementById('reportClose').addEventListener('click', () =>
   document.getElementById('reportModal').classList.remove('show'));
@@ -1406,6 +1531,18 @@ document.getElementById('farmFile').addEventListener('change', async (e) => {
     msg(`Loaded farm layout: ${rows.length}×${Math.max(...rows.map(r => r.length))} (${plants.length} plants). Seed Farm, then choose a run mode.`);
   } catch (err) {
     msg('Could not read that CSV.');
+  }
+  e.target.value = '';
+});
+
+document.getElementById('loadScenarioBtn').addEventListener('click', () => document.getElementById('scenarioFile').click());
+document.getElementById('scenarioFile').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try {
+    loadScenario(await file.text());
+  } catch (err) {
+    msg('Could not read that scenario CSV.');
   }
   e.target.value = '';
 });
