@@ -1,145 +1,156 @@
-# Armyworm (Leucinodes orbonalis) Field Simulator
+# Eggplant Worm Simulator
+### (how a tiny moth can destroy an eggplant field — and how farmers stop it)
 
-An agent-based, daily-timestep simulation of eggplant fruit & shoot borer (EFSB,
-*Leucinodes orbonalis*) infestation on a grid of eggplant plants, driven by real
-weather, with optional control strategies (pheromone mass-trapping, pesticide
-sprays, sanitation) and CSV-scenario replay.
+A single-page web app that simulates the **eggplant fruit and shoot borer**
+(*Leucinodes orbonalis*) — the main worm pest of eggplant in the Philippines and
+across South Asia. You watch a small farm of 200 eggplants day by day, and see
+how weather, a few starting worms, and the farmer's choices (spraying, pheromone
+traps, hand-picking) decide whether the harvest survives or not.
 
-Open `index.html` in a browser (or serve it with `./venv/bin/python server.py`
-for the local file-based data loading). Everything runs client-side — no build
-step.
+Everything runs in your browser — open `index.html` and it just works. No
+install, no build, no internet needed (you can also run `./venv/bin/python
+server.py` and open the page at `http://localhost:8765`).
 
-## Mathematical model
+## What you can do
 
-The simulation advances **one day at a time**. Every event is a stochastic
-**Bernoulli trial** (`Math.random() < p`): the numbers below are daily per-individual
-probabilities, not deterministic rates.
+- Watch the farm day by day: play/pause, change speed, or step **one day at a time**.
+- **Seed the farm** with a few worms (4 by default) on one eggplant and see the outbreak spread.
+- **Take control of the weather** — raise the temperature, change humidity, or make it rain — and see how the pest reacts.
+- Try **tools**: pheromone traps, whole-farm spraying, or both together.
+- **Load a real farm layout** (a CSV where each cell is "plant" or "path").
+- **Load a scenario CSV** — a real 120-day record of weather and treatments — and replay it to compare "real life" with the simulation.
+- Get a **report at the end**: peak infestation day, rate of spread, how many eggplants got eaten, sprays and trap events, and advice on what might have worked better.
 
-### 1. Temperature-driven development (degree-day linear)
+## How the math works (in plain words)
 
-```
-g(T) = 0                                              for T <= Tmin
-g(T) = min( (T - Tmin) / (Topt - Tmin), 1.6 )         for T >  Tmin
-```
+The simulation moves **one day at a time**. On every day, the computer looks at
+**each worm** on **every plant** and makes a decision using **chance**. Think of
+it as rolling a die for each worm: the numbers below are just the odds of each
+event happening to one worm in one day.
 
-| Parameter | Value | Meaning |
-|---|---|---|
-| `TMIN` | 14.6 °C | development stops below this |
-| `TOPT` | 28.0 °C | thermal optimum (denominator) |
+### 1. Warmth makes worms grow faster (temperature model)
 
-Each stage accumulates `progress += g` per day and advances when
-`progress >= DUR` (`egg: 4`, `larva: 11`, `pupa: 8` thermal days). Adults do not
-grow; they age once per day and die at `ADULT_LIFE = 5` days.
+Worms gain "growth points" every day, but only if it's warm enough:
 
-### 2. Daily environmental mortality
+- Below **14.6 °C** — growth stops completely (too cold to develop).
+- Between **14.6 °C and 28 °C** — the warmer it gets, the faster they grow.
+- **28 °C is the "perfect" temperature** — worms grow at their fastest here.
+- Above that, growth is capped (they can't grow faster than a maximum speed).
 
-```
-m = M0(stage)
-  + MR(stage) * [rainy]
-  + 0.12 * [T >= 33]
-  + 0.05 * [T < 20]
-  + ( 0.10 if H < 50   else 0.03 if H < 60 )
-m = min(m, 0.95)
-```
+When a worm has collected enough growth points to finish its stage, it changes:
+**egg → larva (caterpillar) → pupa → adult (moth)**.
+An egg needs 4 "warm days", a larva 11, and a pupa 8.
 
-| Stage | M0 (base) | MR (rain) |
-|---|---|---|
-| egg | 0.03 | 0.10 |
-| larva | 0.02 | 0.05 |
-| pupa | 0.015 | 0.03 |
+### 2. Bad weather kills worms (death by chance)
 
-**Larval crowding:** each larva beyond `LARVA_CAP = 5` on a plant adds `+0.05`
-to death probability.
+Every worm has a **base chance of dying** each day, plus extra chances when the
+weather is stressful. The computer rolls a die; if the number comes up below the
+total chance, the worm dies.
 
-### 3. Reproduction (oviposition)
-
-A gravid female aged `age` lays `W = EGG_NIGHTS[age]` eggs per night:
-
-| age | 0 | 1 | 2 | 3 | 4+ |
-|---|---|---|---|---|---|
-| eggs | 0 | 20 | 14 | 14 | 0 (dead at 5) |
-
-Under pheromone **mating disruption** `W` is multiplied by `MATE_SUPPRESS = 0.50`.
-Eggs per plant are capped at `EGG_CAP = 30`.
-
-### 4. Dispersal
-
-- **Larval crawl:** move to the least-crowded plant within Manhattan distance
-  `CRAWL_DIST = 3`. Larvae are *forced* to leave when the plant exceeds
-  `LARVA_CAP`; otherwise each larva crawls with probability
-  `min(0.35, 0.04 + 0.06 * (excess / LARVA_CAP))`.
-- **Adult flight:** newly emerged adults relocate to a plant at Manhattan
-  distance `6..16` (`FLIGHT_MIN..FLIGHT_MAX`), falling back to a random plant.
-
-### 5. Pesticide spray
-
-- **Instant kill on application:**
-  - egg: `EGG_KILL = 0.80`
-  - exposed neonate (larva progress < `EXPOSED_DAYS = 0.5`): `NEONATE_KILL = 0.85`
-  - sheltered older larva: `PROTECTED_MORT = 0.10`
-- **Residue:** lasts `SPRAY.DAYS = 5` days; while active, egg/neonate daily
-  mortality gets `+RESIDUAL_MORT = 0.30`.
-- **Auto mode** (Spray / Combine runs): fires when cooldown is 0 and infestation
-  `>= SPRAY_THRESHOLD = 5%`; resets a 7-day (spray) or 10-day (combine) cooldown.
-
-### 6. Pheromone lure (mass trapping)
-
-- **Trapping:** each adult male within Manhattan radius `RADIUS = 3` of a trap is
-  removed with `CATCH_MALE = 0.60`/night; males elsewhere on the plot with
-  `CATCH_FAR = 0.15`.
-- **Mating disruption:** `MATE_SUPPRESS = 0.50` reduces field-wide oviposition.
-- Placement: `NAT = 4` traps on an even, aspect-ratio-matched grid across the
-  farm's bounding box.
-
-### 7. Sanitation (Combine mode)
-
-Every `SANITATION.INTERVAL = 7` days, each sheltered larva (progress >= 0.5) is
-removed with `FRACTION = 0.45`.
-
-### 8. Harvest
-
-```
-marketable per plant = max(0, PER_PLANT - min(PER_PLANT, larvae * DAMAGE))
-```
-
-with `PER_PLANT = 3`, `DAMAGE = 0.4`. First picking Day `FIRST = 48`, then every
-`EVERY = 4` days; the profitable season runs to `SEASON = 120` days.
-
-### 9. Aggregate metrics & stop rules
-
-```
-infestation %  P = (infested plants / total plants) * 100
-rate of spread = (I_last - I_first) / max(1, day_last - day_first)  # new plants/day
-```
-
-A run stops when: no borers remain; `P >= 80%` or total worms `>= 2500`
-("out of control"); or `day >= 120`. CSV-scenario runs instead replay every day
-of the scenario (waiting for its starting-infestation day, then running through
-to its last day, ignoring the out-of-control cap).
-
-## Run modes
-
-| Mode | Control |
+| Weather condition | Extra death chance |
 |---|---|
-| Daily (plain) | no control |
-| + Pheromone Lure | mass trapping + mating disruption |
-| + Pesticide Spray | threshold-triggered whole-farm spraying |
-| + Lure & Spray (combine) | traps + less frequent sprays + weekly sanitation |
-| Scenario | replays a user CSV day-by-day (weather, treatments, infestation) |
+| It's raining 🌧 | + 10% for eggs, + 5% for larvae, + 3% for pupae |
+| Very hot (33 °C or higher) | + 12% |
+| Too cold (below 20 °C) | + 5% |
+| Very dry (humidity below 50%) | + 10% |
+| A bit dry (humidity between 50–60%) | + 3% |
 
-## Scenario CSV format
+Even with no bad weather, worms have a small base chance of dying each day:
+eggs 3%, larvae 2%, pupae 1.5%. No worm ever has more than a 95% chance of dying
+in one day (nothing is guaranteed).
 
-Columns: `Day, Infestation, Weather, Temperature (°C), Humidity (%), Treatment`.
+**Crowding kills too:** an eggplant can only feed about **5 larvae**. Every larva
+above that limit adds another **+5% death chance** each (they compete for food).
 
-- Temperature/humidity/rain drive the biology that day.
-- `Treatment` values `Spray` or `Lure` are applied on exactly that day.
-- A non-empty `Infestation` cell (e.g. `20,4 Worms Started`) starts the outbreak.
-- A trailing row `,,,,,Interval=7` sets the re-spray interval note.
+### 3. Moths lay eggs (how the pest multiplies)
 
-Example:
+A female moth lives about **5 days**. She starts laying eggs on her 2nd day and
+lays:
+
+| Age of female moth | 1st day | 2nd | 3rd |
+|---|---|---|---|
+| Eggs laid that night | 0 | **20** | **14** |
+
+(A 4th day gives 14 more, then she's too old and dies.) One plant can hold at
+most **30 eggs** — extra eggs don't fit.
+
+### 4. Worms spread (moving to new plants)
+
+- **Babies crawl:** young caterpillars can move up to **3 plants away** (counting
+  squares across the grid). They leave when their plant is too crowded and prefer
+  to move to a plant with fewer worms.
+- **Moths fly:** when a new adult moth comes out, it flies **6–16 plants away**
+  to start a "colony" somewhere far from where it was born.
+
+This is how one infested plant becomes a whole infested field.
+
+### 5. Pesticide spray (chemistry with chance)
+
+When the farmer sprays, the whole farm gets a chemical layer for **5 days**.
+
+- **Right away (the instant spray):** eggs have an **80%** chance of dying,
+  tiny fresh larvae (**less than half a day old**) have an **85%** chance,
+  but older hidden larvae have only a **10%** chance (they're sheltered inside
+  the fruit/shoots).
+- **While the layer lasts:** every day, eggs and fresh babies get an extra
+  **+30%** death chance.
+
+**Auto-spray mode:** the farmer automatically sprays when **5% of plants** are
+infested, then waits **7 days** (or 10 for the combined method) before spraying
+again.
+
+### 6. Pheromone traps (a love trick)
+
+A pheromone trap smells like a female moth, so it **lures male moths away**:
+
+- Males within **3 plants** of a trap: **60%** chance of being trapped each night.
+- Males further away: **15%** chance (the smell reaches the whole small field).
+- The fake smell also **confuses the whole field** — real males can't find
+  females as easily, so females lay **half** the eggs they normally would.
+
+Traps are placed in a neat **grid** across the farm (4 traps by default).
+
+### 7. Hand-picking (cleaning up, used in the combined method)
+
+Every **7 days**, the farmer visits each plant and removes **45%** of the hidden
+larvae by hand — removing the ones the spray can't reach.
+
+### 8. Harvesting the eggplants
+
+Each picking day, a healthy plant gives **3 fruits**. Every larva damages
+**0.4 fruits** (it eats into the fruit). So:
 
 ```
-Day,Infestation,Weather,Temperature (°C),Humidity (%),Treatment
+fruits you get = 3 − (larva damage), but never less than 0
+```
+
+The first picking is Day 48, then every 4 days, and the growing season lasts
+**120 days**.
+
+### 9. The numbers in the report
+
+- **Infestation %** = the share of plants that have at least one worm, in percent.
+- **Rate of spread** = (infested plants at the end − at the start) ÷ days in between —
+  "how many new plants get infected each day, on average". The report also shows
+  the single fastest daily jump.
+- The run ends when worms die out, when **80% of plants** are infested (or **2500 worms**), or after **120 days**.
+
+## Try it — the four "strategies"
+
+| Strategy | What happens |
+|---|---|
+| **Daily (no control)** | Watch the pest do whatever it wants. |
+| **+ Pheromone traps** | Traps catch males and reduce egg-laying. |
+| **+ Pesticide spray** | Farmer sprays when 5% of plants are infested. |
+| **+ Lure & Spray (combined)** | Traps + less frequent sprays + hand-picking every 7 days. |
+| **Scenario** | Replays a CSV record — real weather and treatments, day by day. |
+
+## Make your own scenario file (optional)
+
+A scenario is just a spreadsheet (CSV) with these columns:
+
+```
+Day, Infestation, Weather, Temperature (°C), Humidity (%), Treatment
 1,,Sunny,30°C,76%,None
 20,4 Worms Started,Sunny,31°C,75%,None
 55,,Sunny,31°C,72%,Lure
@@ -147,10 +158,29 @@ Day,Infestation,Weather,Temperature (°C),Humidity (%),Treatment
 ,,,,,Interval=7
 ```
 
-## Files
+- **Temperature** and **humidity** tell the simulation what the weather was each day.
+- **Treatment**: `Spray` or `Lure` means that tool was used *that day*.
+- **Infestation**: a written note like `4 Worms Started` on a day tells the
+  simulation a farmer found 4 worms on that day.
+- **Interval=7** (bottom row) just writes how often a farmer would re-spray.
+- Missing days keep the weather of the previous day.
 
-- `index.html` — full simulation (model, UI, reports).
-- `generated_data.py` — model reference implementation used for validation.
-- `leucinodes_orbonalis_simulation.csv` / `farm.csv` — climate record and farm layout.
-- `Research-Sources.md` — literature basis for the parameter values.
-- `server.py` — optional local HTTP server (avoids browser file-access limits).
+Sample files for real 120-day records (no treatment, spray, lure, both) are in
+your `Downloads` folder if you want to try one.
+
+## Where do the numbers come from?
+
+The temperature limits, egg and larvae counts, trap catch rates, and other
+values come from published field studies on eggplant fruit and shoot borer —
+see **`Research-Sources.md`** in this folder for the full list of sources.
+
+## Files in this folder
+
+| File | What it is |
+|---|---|
+| `index.html` | The whole simulation (page + math + charts). |
+| `farm.csv` | The default farm layout ("plant" cells and cleared paths). |
+| `leucinodes_orbonalis_simulation.csv` | A 15-day weather/climate record. |
+| `Research-Sources.md` | The scientific sources behind the numbers. |
+| `generate_data.py` | The reference model (used to double-check the browser version). |
+| `server.py` | Optional little local web server. |
